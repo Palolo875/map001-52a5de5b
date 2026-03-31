@@ -17,14 +17,12 @@ export interface WikiSummary {
 
 export async function fetchWikipediaSummary(lat: number, lon: number, locationName: string): Promise<WikiSummary | null> {
   try {
-    // Try geo search first
     const geoRes = await fetch(
       `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=3&format=json&origin=*`
     );
     const geoData = await geoRes.json();
     const pages = geoData?.query?.geosearch || [];
     
-    // Fall back to text search if no geo results
     let pageTitle = pages.length > 0 ? pages[0].title : null;
     if (!pageTitle) {
       const searchRes = await fetch(
@@ -127,7 +125,6 @@ export async function fetchWikimediaPhotos(lat: number, lon: number, limit = 6):
 }
 
 // ─── Countries Dataset (DATASET_FIRST) ───────────────────────────────
-// Loaded once from local snapshot, cached in memory for all subsequent lookups.
 let countriesCache: any[] | null = null;
 
 async function getCountriesDataset(): Promise<any[] | null> {
@@ -167,7 +164,6 @@ export interface CountryInfo {
 
 export async function fetchCountryInfo(lat: number, lon: number): Promise<CountryInfo | null> {
   try {
-    // Use reverse geocoding to get country code
     const geoRes = await fetch(
       `https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}&lang=fr&limit=1`
     );
@@ -175,13 +171,11 @@ export async function fetchCountryInfo(lat: number, lon: number): Promise<Countr
     const countryCode = geoData?.features?.[0]?.properties?.countrycode;
     if (!countryCode) return null;
 
-    // Fetch from our local dataset (cached singleton)
     const allList = await getCountriesDataset();
     if (!allList) return null;
     const c = allList.find((country: any) => country.cca2 === countryCode);
     if (!c) return null;
 
-    // Add emergency numbers from local dataset
     const emergencyList = await getEmergencyDataset();
     const emm = emergencyList?.find((e: any) => e.countryCode === countryCode);
 
@@ -189,7 +183,6 @@ export async function fetchCountryInfo(lat: number, lon: number): Promise<Countr
     const langs = c.languages 
       ? Object.keys(c.languages).map(code => {
           try {
-            // ISO 639-3 to ISO 639-1 if needed, but Intl.DisplayNames handles many 3-letter codes
             return langNames.of(code) || c.languages[code];
           } catch {
             return c.languages[code];
@@ -269,22 +262,15 @@ const overpassCategories: Record<string, { query: string; label: string }> = {
   worship: { query: `node["amenity"="place_of_worship"]`, label: "Lieu de culte" },
 };
 
-// ─── Overture Maps / Local Dataset (Architectural Goal) ────────────
-// In the future, this will query our own Cloudflare Worker pointing to an Overture PMTiles/Parquet snapshot.
 async function fetchLocalOverturePOIs(lat: number, lon: number, radiusM: number): Promise<NearbyPOI[] | null> {
-  // Placeholder: Not implemented yet. We return null to force the Overpass fallback.
   return null;
 }
 
-// ─── Overpass (OSM) — Fallback POIs ──────────────────────────────────
-// Overpass is marked as FALLBACK_ONLY in source-audit.md
 export async function fetchNearbyPOIs(lat: number, lon: number, radiusM = 2000): Promise<NearbyPOI[]> {
   try {
-    // 1. Attempt to fetch from future local dataset
     const localPOIs = await fetchLocalOverturePOIs(lat, lon, radiusM);
     if (localPOIs && localPOIs.length > 0) return localPOIs;
 
-    // 2. Fallback to Overpass Public API
     const queries = Object.entries(overpassCategories)
       .map(([, v]) => `${v.query}(around:${radiusM},${lat},${lon});`)
       .join("");
@@ -389,12 +375,11 @@ export async function fetchEONETEvents(lat: number, lon: number, radiusKm = 500)
     for (const event of data.events || []) {
       const geom = event.geometry?.[0];
       if (geom && geom.coordinates) {
-        // Handle Points or Polygons
         let eLon, eLat;
         if (geom.type === "Point") {
           [eLon, eLat] = geom.coordinates;
         } else if (geom.type === "Polygon" && Array.isArray(geom.coordinates[0])) {
-          [eLon, eLat] = geom.coordinates[0][0]; // Take first point of polygon
+          [eLon, eLat] = geom.coordinates[0][0];
         } else {
           continue;
         }
@@ -510,11 +495,9 @@ export async function fetchINaturalistSpecies(lat: number, lon: number): Promise
   }
 }
 
-
-// ─── Elevation profile narrative ─────────────────────────────────────
+// ─── Deep Links — universal navigation ──────────────────────────────
 export function generateDeepLink(lat: number, lon: number, label?: string): string {
   const encodedLabel = label ? encodeURIComponent(label) : "";
-  // geo: URI scheme — opens native maps on mobile
   return `geo:${lat},${lon}?q=${lat},${lon}(${encodedLabel})`;
 }
 
@@ -524,4 +507,28 @@ export function generateGoogleMapsLink(lat: number, lon: number): string {
 
 export function generateAppleMapsLink(lat: number, lon: number, label?: string): string {
   return `https://maps.apple.com/?daddr=${lat},${lon}&dirflg=d${label ? `&q=${encodeURIComponent(label)}` : ""}`;
+}
+
+export function generateWazeLink(lat: number, lon: number): string {
+  return `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
+}
+
+export function generateOsmAndLink(lat: number, lon: number): string {
+  return `https://osmand.net/go?lat=${lat}&lon=${lon}&z=15`;
+}
+
+export interface NavigationOption {
+  label: string;
+  url: string;
+  icon?: string;
+}
+
+export function getNavigationOptions(lat: number, lon: number, label?: string): NavigationOption[] {
+  return [
+    { label: "App native", url: generateDeepLink(lat, lon, label) },
+    { label: "Google Maps", url: generateGoogleMapsLink(lat, lon) },
+    { label: "Apple Maps", url: generateAppleMapsLink(lat, lon, label) },
+    { label: "Waze", url: generateWazeLink(lat, lon) },
+    { label: "OsmAnd", url: generateOsmAndLink(lat, lon) },
+  ];
 }
