@@ -1,0 +1,32 @@
+[
+  {
+    "countryCode": "FR",
+    "emergency": {
+      "all": "112",
+      "police": "17",
+      "ambulance": "15",
+      "fire": "18"
+    }
+  },
+  {
+    "countryCode": "US",
+    "emergency": {
+      "all": "911"
+    }
+  },
+  {
+    "countryCode": "GB",
+    "emergency": {
+      "all": "999",
+      "police": "101",
+      "ambulance": "111"
+    }
+  },
+  {
+    "countryCode": "DE",
+    "emergency": {
+      "all": "112",
+      "police": "110"
+    }
+  }
+]
