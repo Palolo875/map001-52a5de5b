@@ -6,19 +6,18 @@ import { generateNarrative } from "@/lib/narrative";
 import {
   fetchWikipediaSummary, fetchWikimediaPhotos, fetchCountryInfo,
   fetchNearbyPOIs, fetchEarthquakes, fetchGBIFSpecies, fetchEONETEvents, fetchINaturalistSpecies,
-  generateGoogleMapsLink, generateAppleMapsLink,
+  getNavigationOptions,
   type WikiSummary, type WikimediaPhoto, type CountryInfo,
   type NearbyPOI, type Earthquake, type GBIFSpecies, type NaturalEvent,
 } from "@/lib/enrichment";
 import NarrativeCard from "./NarrativeCard";
 import HourlyForecast from "./HourlyForecast";
-import TemperatureArea from "./TemperatureArea";
 import DailyForecast from "./DailyForecast";
 import StoryCarousel from "./StoryCarousel";
 import GaugeArc from "./GaugeArc";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Download01Icon, Image01Icon, BookOpen01Icon, Globe02Icon, Location01Icon, 
+  Image01Icon, BookOpen01Icon, Globe02Icon, Location01Icon, 
   CallIcon, Navigation03Icon, Share01Icon, Bookmark02Icon, 
   ArrowRight01Icon, Leaf01Icon, Alert02Icon, SparklesIcon, VolumeHighIcon,
   FastWindIcon, DropletIcon, Sun03Icon, Cancel01Icon
@@ -152,7 +151,6 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
         )}
 
         <DrawerHeader className={`pb-0 px-5 relative transition-all duration-300 ${activeTab !== 'explore' ? 'pt-14' : ''}`}>
-          {/* Location name + close */}
           <div className="flex items-center justify-between pointer-events-auto">
             <div className="min-w-0">
               <DrawerTitle className="font-serif text-3xl text-foreground truncate tracking-tight">
@@ -183,40 +181,51 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
             </DrawerClose>
           </div>
 
-          {/* Weather description */}
           <p className="text-xs text-muted-foreground mt-1.5 italic">
             {getWeatherDescription(current.weatherCode)}
             {country && ` — ${country.subregion || country.region || country.name}`}
           </p>
         </DrawerHeader>
 
-        {/* ─── Temperature Hero ─── */}
-        <div className={`transition-all duration-300 overflow-hidden ${activeTab === 'explore' ? 'opacity-100 max-h-[120px]' : 'opacity-0 max-h-0'}`}>
+        {/* ─── Temperature Hero + Perspective side by side ─── */}
+        <div className={`transition-all duration-300 overflow-hidden ${activeTab === 'explore' ? 'opacity-100 max-h-[180px]' : 'opacity-0 max-h-0'}`}>
           <div className="px-5 pt-4 pb-3">
-            <div className="flex items-end gap-1.5">
-              <span className="text-6xl font-serif tracking-tighter leading-none">{Math.round(current.temperature)}</span>
-              <span className="text-xl text-muted-foreground font-serif mb-1.5">°C</span>
-            </div>
-            <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <HugeiconsIcon icon={Sun03Icon} size={11} className="text-muted-foreground/60" />
-                Ressenti {current.apparentTemperature.toFixed(1)}°
-              </span>
-              <span className="flex items-center gap-1.5">
-                <HugeiconsIcon icon={DropletIcon} size={11} className="text-muted-foreground/60" />
-                {current.humidity}%
-              </span>
-              <span className="flex items-center gap-1.5">
-                <HugeiconsIcon icon={FastWindIcon} size={11} className="text-muted-foreground/60" />
-                {current.windSpeed.toFixed(0)} km/h {getWindDirection(current.windDirection)}
-              </span>
+            <div className="flex items-start gap-4">
+              {/* Left: Temperature */}
+              <div className="shrink-0">
+                <div className="flex items-end gap-1">
+                  <span className="text-5xl font-serif tracking-tighter leading-none">{Math.round(current.temperature)}</span>
+                  <span className="text-lg text-muted-foreground font-serif mb-1">°C</span>
+                </div>
+                <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <HugeiconsIcon icon={Sun03Icon} size={10} className="text-muted-foreground/60" />
+                    Ressenti {current.apparentTemperature.toFixed(0)}°
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <HugeiconsIcon icon={DropletIcon} size={10} className="text-muted-foreground/60" />
+                    {current.humidity}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <HugeiconsIcon icon={FastWindIcon} size={10} className="text-muted-foreground/60" />
+                    {current.windSpeed.toFixed(0)} km/h
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: Top 2 narrative insights */}
+              <div className="flex-1 min-w-0 border-l border-border/20 pl-4">
+                {narrative.slice(0, 2).map((insight, i) => (
+                  <NarrativeCard key={insight.category + i} insight={insight} index={i} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* ─── Action Pills ─── */}
         <div className={`transition-all duration-300 overflow-hidden ${activeTab === 'explore' ? 'opacity-100 max-h-[80px]' : 'opacity-0 max-h-0'}`}>
-          <div className="px-5 pb-4 mt-1">
+          <div className="px-5 pb-3 mt-1">
             <div className="flex gap-2 overflow-x-auto hide-scrollbar snap-x pb-1">
               {traits.has("VITAL") && (
                 <a
@@ -227,15 +236,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
                   Appeler (112)
                 </a>
               )}
-              <a
-                href={generateGoogleMapsLink(lat, lon)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full px-4 text-[10px] font-medium uppercase tracking-widest transition-all shadow-soft bg-primary text-primary-foreground hover:opacity-90"
-              >
-                <HugeiconsIcon icon={Navigation03Icon} size={13} />
-                Itinéraire
-              </a>
+              <NavigationButton lat={lat} lon={lon} locationName={locationName} />
               <button
                 onClick={() => {
                   if (navigator.share) {
@@ -246,12 +247,12 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
                     }).catch(() => {});
                   }
                 }}
-                className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all shadow-subtle"
+                className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
               >
                 <HugeiconsIcon icon={Share01Icon} size={13} />
                 Partager
               </button>
-              <button className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all shadow-subtle">
+              <button className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all">
                 <HugeiconsIcon icon={Bookmark02Icon} size={13} />
                 Sauver
               </button>
@@ -291,6 +292,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               lat={lat}
               lon={lon}
               traits={traits}
+              locationName={locationName}
             />
           )}
         </div>
@@ -299,14 +301,52 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
   );
 }
 
+// ─── Navigation Button with app picker ──────────────────────────────
+function NavigationButton({ lat, lon, locationName }: { lat: number; lon: number; locationName: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const options = getNavigationOptions(lat, lon, locationName);
+  
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full px-4 text-[10px] font-medium uppercase tracking-widest transition-all bg-primary text-primary-foreground hover:opacity-90"
+      >
+        <HugeiconsIcon icon={Navigation03Icon} size={13} />
+        Itinéraire
+      </button>
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowPicker(false)} />
+          <div className="absolute top-full left-0 mt-2 z-50 bg-card border border-border/40 rounded-2xl shadow-warm overflow-hidden min-w-[160px] animate-fade-in-up">
+            {options.map((opt) => (
+              <a
+                key={opt.label}
+                href={opt.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowPicker(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-[11px] text-foreground hover:bg-muted/50 transition-colors border-b border-border/10 last:border-0"
+              >
+                <HugeiconsIcon icon={Navigation03Icon} size={11} className="text-muted-foreground/60" />
+                {opt.label}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Météo Tab ───────────────────────────────────────────────────────
 function MeteoTab({ weather }: { weather: WeatherData }) {
   const { current } = weather;
   return (
     <div className="pb-8 animate-fade-in-up px-5">
-      {/* Temperature Area */}
-      <Section title="Évolution (24h)" className="pt-4">
-        <TemperatureArea hourly={weather.hourly} />
+      {/* Hourly — compact list with mini bars */}
+      <Section title="Prochaines heures" className="pt-4">
+        <HourlyForecast hourly={weather.hourly} />
       </Section>
 
       {/* Daily */}
@@ -316,9 +356,9 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
 
       {/* Gauges */}
       <Section title="Qualité de l'environnement">
-        <div className="flex justify-around items-end mt-4 mb-2">
+        <div className="flex justify-around items-end mt-2 mb-2">
           <GaugeArc 
-            value={current.uvIndex} min={0} max={11} label="Index UV" size={130}
+            value={current.uvIndex} min={0} max={11} label="Index UV" size={120}
             colorStops={[
               { offset: "0%", color: "#93b399" },
               { offset: "50%", color: "#e6c875" },
@@ -327,7 +367,7 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
           />
           {weather.airQuality && (
             <GaugeArc 
-              value={weather.airQuality.aqi} min={0} max={100} label="AQI" size={130}
+              value={weather.airQuality.aqi} min={0} max={100} label="AQI" size={120}
               colorStops={[
                 { offset: "0%", color: "#93b399" },
                 { offset: "50%", color: "#e6c875" },
@@ -340,19 +380,20 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
 
       {/* Metrics */}
       <Section title="Données détaillées">
-        <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className="grid grid-cols-3 gap-px bg-border/20 rounded-xl overflow-hidden mt-2">
           <MetricCell label="Pression" value={`${current.pressure.toFixed(0)} hPa`} />
           <MetricCell label="Visibilité" value={`${(current.visibility / 1000).toFixed(1)} km`} />
-          <MetricCell label="Point de rosée" value={`${current.dewPoint.toFixed(1)}°C`} />
-          <MetricCell label="Couverture" value={`${current.cloudCover}%`} />
+          <MetricCell label="Rosée" value={`${current.dewPoint.toFixed(1)}°`} />
+          <MetricCell label="Nuages" value={`${current.cloudCover}%`} />
           <MetricCell label="Altitude" value={`${weather.elevation.toFixed(0)}m`} />
+          <MetricCell label="UV" value={current.uvIndex.toFixed(1)} />
           {weather.airQuality && (
             <>
-              <MetricCell label="PM2.5" value={`${weather.airQuality.pm25.toFixed(1)} µg/m³`} />
-              <MetricCell label="PM10" value={`${weather.airQuality.pm10.toFixed(1)} µg/m³`} />
-              <MetricCell label="NO2" value={`${weather.airQuality.no2.toFixed(1)} µg/m³`} />
-              <MetricCell label="Ozone" value={`${weather.airQuality.o3.toFixed(1)} µg/m³`} />
-              <MetricCell label="SO2" value={`${weather.airQuality.so2.toFixed(1)} µg/m³`} />
+              <MetricCell label="PM2.5" value={`${weather.airQuality.pm25.toFixed(1)}`} />
+              <MetricCell label="PM10" value={`${weather.airQuality.pm10.toFixed(1)}`} />
+              <MetricCell label="NO₂" value={`${weather.airQuality.no2.toFixed(1)}`} />
+              <MetricCell label="O₃" value={`${weather.airQuality.o3.toFixed(1)}`} />
+              <MetricCell label="SO₂" value={`${weather.airQuality.so2.toFixed(1)}`} />
             </>
           )}
         </div>
@@ -405,31 +446,31 @@ function ExploreTab({
       {/* ─── Situation Badges ─── */}
       <div className="px-5 pt-3 pb-1 flex flex-wrap gap-1.5">
         {traits.has("VITAL") && (
-          <span className="bg-pastel-red-bg text-pastel-red-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-subtle">
+          <span className="bg-pastel-red-bg text-pastel-red-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-pastel-red-text animate-soft-pulse" />
             Assistance
           </span>
         )}
         {traits.has("WILD") && (
-          <span className="bg-pastel-green-bg text-pastel-green-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-subtle">
+          <span className="bg-pastel-green-bg text-pastel-green-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
             <HugeiconsIcon icon={Leaf01Icon} size={10} />
             Zone Sauvage
           </span>
         )}
         {quakes.length > 0 && Math.max(...quakes.map(q => q.magnitude)) >= 3 && (
-          <span className="bg-pastel-yellow-bg text-pastel-yellow-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-subtle">
+          <span className="bg-pastel-yellow-bg text-pastel-yellow-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
             <HugeiconsIcon icon={Alert02Icon} size={10} />
             Sismique
           </span>
         )}
         {weather.current.temperature > 30 && (
-          <span className="bg-pastel-yellow-bg text-pastel-yellow-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-subtle">
+          <span className="bg-pastel-yellow-bg text-pastel-yellow-text px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
             <HugeiconsIcon icon={SparklesIcon} size={10} />
             Chaleur
           </span>
         )}
         {!wiki && pois.length === 0 && (
-          <span className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-subtle">
+          <span className="bg-muted text-muted-foreground px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
             <HugeiconsIcon icon={Globe02Icon} size={10} />
             Hors-Piste
           </span>
@@ -444,8 +485,8 @@ function ExploreTab({
     switch (moduleId) {
       case "narrative":
         return (
-          <div key="narrative" className="px-5 pt-5">
-            <div className="flex items-center justify-between mb-3">
+          <div key="narrative" className="px-5 pt-4">
+            <div className="flex items-center justify-between mb-2">
               <SectionTitle className="mb-0">Perspective</SectionTitle>
               <button 
                 onClick={() => setActiveTab('meteo')}
@@ -455,17 +496,20 @@ function ExploreTab({
                 <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
               </button>
             </div>
-            <div className="surface-soft rounded-2xl p-4">
-              {narrative.map((insight, i) => (
-                <NarrativeCard key={insight.category + i} insight={insight} index={i} />
-              ))}
-            </div>
+            {/* Show remaining insights (first 2 are in header) */}
+            {narrative.slice(2).length > 0 && (
+              <div className="border-t border-border/15 pt-2">
+                {narrative.slice(2).map((insight, i) => (
+                  <NarrativeCard key={insight.category + i} insight={insight} index={i} />
+                ))}
+              </div>
+            )}
           </div>
         );
       
       case "story":
         return (
-          <div key="story" className="pt-5">
+          <div key="story" className="pt-4">
             <StoryCarousel 
               quakes={quakes} 
               species={species} 
@@ -485,25 +529,24 @@ function ExploreTab({
         if (!isActuallyIsolated) return null;
         
         return (
-          <div key="isolated_brief" className="px-5 pt-5 animate-fade-in-up">
-            <div className="surface-soft rounded-3xl p-8 text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-muted/30 to-transparent" />
-              <div className="relative z-10 flex flex-col items-center">
-                <div className="w-14 h-14 bg-background rounded-full flex items-center justify-center shadow-warm border border-border/40 mb-5">
-                  <HugeiconsIcon icon={Globe02Icon} size={28} className="text-muted-foreground" />
+          <div key="isolated_brief" className="px-5 pt-4 animate-fade-in-up">
+            <div className="rounded-2xl p-6 text-center border border-border/15">
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-muted/30 rounded-full flex items-center justify-center border border-border/20 mb-4">
+                  <HugeiconsIcon icon={Globe02Icon} size={24} className="text-muted-foreground" />
                 </div>
-                <h3 className="font-serif text-2xl text-foreground mb-3">L'essentiel du lieu</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed max-w-[220px] mx-auto mb-5">
-                  Ce point est déconnecté des infrastructures humaines. La nature impose son rythme.
+                <h3 className="font-serif text-xl text-foreground mb-2">L'essentiel du lieu</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed max-w-[220px] mx-auto mb-4">
+                  Ce point est déconnecté des infrastructures humaines.
                 </p>
-                <div className="flex gap-6">
-                  <div className="text-center">
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-1">Silence</p>
+                <div className="flex gap-6 text-center">
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Silence</p>
                     <p className="text-sm font-mono text-foreground">95-100%</p>
                   </div>
-                  <div className="w-px h-8 bg-border/50" />
-                  <div className="text-center">
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-1">Pollution</p>
+                  <div className="w-px h-8 bg-border/30" />
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Pollution</p>
                     <p className="text-sm font-mono text-foreground">0.0%</p>
                   </div>
                 </div>
@@ -515,27 +558,26 @@ function ExploreTab({
 
       case "photos":
         return photos.length > 0 ? (
-          <div key="photos" className="px-5 pt-5 animate-fade-in-up">
+          <div key="photos" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={Image01Icon}>Documentation</SectionTitle>
-            {/* Masonry 2+1 layout */}
-            <div className="grid grid-cols-3 gap-1.5 rounded-2xl overflow-hidden">
+            <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden">
               {photos.slice(0, 1).map((p, i) => (
-                <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="col-span-2 row-span-2 block relative group rounded-2xl overflow-hidden">
-                  <img src={p.thumbUrl} alt={p.title} className="w-full h-full min-h-[140px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="col-span-2 row-span-2 block relative group rounded-xl overflow-hidden">
+                  <img src={p.thumbUrl} alt={p.title} className="w-full h-full min-h-[120px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </a>
               ))}
               {photos.slice(1, 3).map((p, i) => (
-                <a key={i+1} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-2xl overflow-hidden">
-                  <img src={p.thumbUrl} alt={p.title} className="w-full h-[68px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                <a key={i+1} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-xl overflow-hidden">
+                  <img src={p.thumbUrl} alt={p.title} className="w-full h-[58px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
                 </a>
               ))}
             </div>
             {photos.length > 3 && (
-              <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+              <div className="grid grid-cols-3 gap-1 mt-1">
                 {photos.slice(3, 6).map((p, i) => (
-                  <a key={i+3} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-2xl overflow-hidden">
-                    <img src={p.thumbUrl} alt={p.title} className="w-full h-20 object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                  <a key={i+3} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-xl overflow-hidden">
+                    <img src={p.thumbUrl} alt={p.title} className="w-full h-16 object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
                   </a>
                 ))}
               </div>
@@ -545,55 +587,73 @@ function ExploreTab({
 
       case "wiki_brief":
         return wiki ? (
-          <div key="wiki_brief" className="px-5 pt-5 animate-fade-in-up">
+          <div key="wiki_brief" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={BookOpen01Icon}>Synthèse Culturelle</SectionTitle>
-            <div className="surface-soft rounded-2xl p-4">
-              <div className="flex gap-3">
-                {wiki.thumbnail && (
-                  <img src={wiki.thumbnail} alt={wiki.title} className="w-16 h-16 rounded-xl object-cover border border-border/30 shrink-0" loading="lazy" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-medium text-foreground mb-0.5 truncate">{wiki.title}</h3>
+            {/* Integrated layout — photo banner + content flow */}
+            {wiki.thumbnail && (
+              <div className="relative rounded-xl overflow-hidden mb-3 h-[120px]">
+                <img src={wiki.thumbnail} alt={wiki.title} className="w-full h-full object-cover" loading="lazy" />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/30 to-transparent" />
+                <div className="absolute bottom-0 inset-x-0 p-3">
+                  <h3 className="text-sm font-serif text-foreground">{wiki.title}</h3>
                   {wiki.description && (
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-1">{wiki.description}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{wiki.description}</p>
                   )}
-                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{wiki.extract}</p>
                 </div>
               </div>
-              
-              {wiki.facts && Object.keys(wiki.facts).length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-1.5">
-                  {wiki.facts.population && (
-                    <MetricCell label="Population" value={formatPopulation(wiki.facts.population)} />
-                  )}
-                  {wiki.facts.area && (
-                    <MetricCell label="Superficie" value={`${wiki.facts.area.toLocaleString("fr-FR")} km²`} />
-                  )}
-                  {wiki.facts.elevation && (
-                    <MetricCell label="Altitude" value={`${wiki.facts.elevation} m`} />
-                  )}
-                </div>
-              )}
+            )}
+            {!wiki.thumbnail && (
+              <div className="mb-2">
+                <h3 className="text-sm font-medium text-foreground">{wiki.title}</h3>
+                {wiki.description && (
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">{wiki.description}</p>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{wiki.extract}</p>
+            
+            {/* Facts inline row */}
+            {wiki.facts && Object.keys(wiki.facts).length > 0 && (
+              <div className="flex gap-4 mt-3 pt-3 border-t border-border/15">
+                {wiki.facts.population && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Population</p>
+                    <p className="text-sm font-mono text-foreground">{formatPopulation(wiki.facts.population)}</p>
+                  </div>
+                )}
+                {wiki.facts.area && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Superficie</p>
+                    <p className="text-sm font-mono text-foreground">{wiki.facts.area.toLocaleString("fr-FR")} km²</p>
+                  </div>
+                )}
+                {wiki.facts.elevation && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Altitude</p>
+                    <p className="text-sm font-mono text-foreground">{wiki.facts.elevation} m</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-              {wiki.url && (
-                <a href={wiki.url} target="_blank" rel="noopener noreferrer"
-                  className="mt-3 flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Lire la suite
-                  <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
-                </a>
-              )}
-            </div>
+            {wiki.url && (
+              <a href={wiki.url} target="_blank" rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Lire la suite
+                <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
+              </a>
+            )}
           </div>
         ) : null;
 
       case "events_brief":
         return naturalEvents.length > 0 ? (
-          <div key="events_brief" className="px-5 pt-5 animate-fade-in-up">
+          <div key="events_brief" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={Alert02Icon}>Événements Naturels</SectionTitle>
-            <div className="space-y-1.5">
+            <div className="space-y-px">
               {naturalEvents.map((evt, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-pastel-red-bg/40 border border-pastel-red-text/10">
+                <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/15 last:border-0">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-foreground mb-0.5">{evt.title}</p>
                     <p className="text-[10px] text-pastel-red-text uppercase tracking-widest">{evt.category}</p>
@@ -607,57 +667,55 @@ function ExploreTab({
 
       case "country":
         return country ? (
-          <div key="country" className="px-5 pt-5 animate-fade-in-up">
+          <div key="country" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={Globe02Icon}>Identité culturelle</SectionTitle>
-            <div className="surface-soft rounded-2xl p-4">
-              <div className="flex items-start gap-3 mb-3">
-                {country.flag && (
-                  <img src={country.flag} alt={country.name} className="w-10 h-7 rounded object-cover border border-border/30" />
+            <div className="flex items-start gap-3 mb-3">
+              {country.flag && (
+                <img src={country.flag} alt={country.name} className="w-10 h-7 rounded object-cover border border-border/30" />
+              )}
+              <div>
+                <p className="text-sm font-medium text-foreground">{country.name}</p>
+                {country.nativeName && country.nativeName !== country.name && (
+                  <p className="text-xs text-muted-foreground/70 italic">{country.nativeName}</p>
                 )}
-                <div>
-                  <p className="text-sm font-medium text-foreground">{country.name}</p>
-                  {country.nativeName && country.nativeName !== country.name && (
-                    <p className="text-xs text-muted-foreground/70 italic">{country.nativeName}</p>
-                  )}
-                </div>
               </div>
-              <div className="space-y-2 text-sm">
-                <InfoRow label="Langue" value={country.languages.join(", ")} />
-                <InfoRow label="Devises" value={country.currencies.map((c) => `${c.name} (${c.symbol})`).join(", ")} />
-                <InfoRow label="Capitale" value={country.capital} />
-                <InfoRow label="Population" value={formatPopulation(country.population)} />
-                <InfoRow label="Superficie" value={`${country.area.toLocaleString("fr-FR")} km²`} />
-                <InfoRow label="Région" value={`${country.subregion || country.region}`} />
-                <InfoRow label="Fuseau" value={country.timezones[0] || ""} />
-                {country.emergency && (
-                  <div className="mt-3 pt-3 border-t border-border/30">
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5">
-                      <HugeiconsIcon icon={CallIcon} size={10} />
-                      Numéros d'urgence
-                    </p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <div className="bg-pastel-red-bg/30 rounded-xl px-2.5 py-1.5 flex justify-between items-center">
-                        <span className="text-[10px] text-pastel-red-text">Général</span>
-                        <span className="text-sm font-mono font-semibold text-pastel-red-text">{country.emergency.all}</span>
-                      </div>
-                      {country.emergency.police && (
-                        <div className="bg-muted/40 rounded-xl px-2.5 py-1.5 flex justify-between items-center">
-                          <span className="text-[10px] text-muted-foreground">Police</span>
-                          <span className="text-sm font-mono text-foreground">{country.emergency.police}</span>
-                        </div>
-                      )}
+            </div>
+            <div className="space-y-2 text-sm">
+              <InfoRow label="Langue" value={country.languages.join(", ")} />
+              <InfoRow label="Devises" value={country.currencies.map((c) => `${c.name} (${c.symbol})`).join(", ")} />
+              <InfoRow label="Capitale" value={country.capital} />
+              <InfoRow label="Population" value={formatPopulation(country.population)} />
+              <InfoRow label="Superficie" value={`${country.area.toLocaleString("fr-FR")} km²`} />
+              <InfoRow label="Région" value={`${country.subregion || country.region}`} />
+              <InfoRow label="Fuseau" value={country.timezones[0] || ""} />
+              {country.emergency && (
+                <div className="mt-3 pt-3 border-t border-border/20">
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5">
+                    <HugeiconsIcon icon={CallIcon} size={10} />
+                    Numéros d'urgence
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="bg-pastel-red-bg/30 rounded-xl px-2.5 py-1.5 flex justify-between items-center">
+                      <span className="text-[10px] text-pastel-red-text">Général</span>
+                      <span className="text-sm font-mono font-semibold text-pastel-red-text">{country.emergency.all}</span>
                     </div>
+                    {country.emergency.police && (
+                      <div className="bg-muted/30 rounded-xl px-2.5 py-1.5 flex justify-between items-center">
+                        <span className="text-[10px] text-muted-foreground">Police</span>
+                        <span className="text-sm font-mono text-foreground">{country.emergency.police}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         ) : null;
 
       case "pois":
         return pois.length > 0 ? (
-          <div key="pois" className="px-5 pt-5 animate-fade-in-up">
-            <div className="flex items-center justify-between mb-3">
+          <div key="pois" className="px-5 pt-4 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-2">
               <SectionTitle icon={Location01Icon} className="mb-0">
                 Proximité{traits.has("VITAL") ? " & Aide" : ""}
               </SectionTitle>
@@ -669,14 +727,14 @@ function ExploreTab({
                 <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
               </button>
             </div>
-            <div className="surface-soft rounded-2xl overflow-hidden">
+            <div className="border-t border-border/15">
               {pois.slice(0, 5).map((poi, i) => (
-                <div key={i} className={`flex items-center justify-between px-4 py-2.5 border-b border-border/30 last:border-0 ${poi.category === 'Hôpital' || poi.category === 'Pharmacie' ? 'bg-pastel-red-bg/20' : ''}`}>
+                <div key={i} className={`flex items-center justify-between py-2.5 border-b border-border/15 last:border-0 ${poi.category === 'Hôpital' || poi.category === 'Pharmacie' ? 'bg-pastel-red-bg/10' : ''}`}>
                   <div className="flex items-start gap-2 min-w-0 flex-1">
                     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider mt-0.5 ${
                       poi.category === 'Hôpital' || poi.category === 'Pharmacie' 
                         ? 'bg-pastel-red-bg text-pastel-red-text font-semibold' 
-                        : 'bg-muted/60 text-muted-foreground'
+                        : 'bg-muted/40 text-muted-foreground'
                     }`}>
                       {poi.category}
                     </span>
@@ -693,21 +751,19 @@ function ExploreTab({
 
       case "nature_brief":
         return species.length > 0 ? (
-          <div key="nature_brief" className="px-5 pt-5 animate-fade-in-up">
+          <div key="nature_brief" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={Leaf01Icon}>Biodiversité</SectionTitle>
-            <div className="bg-pastel-green-bg/30 rounded-2xl p-4 border border-pastel-green-text/8">
-              <p className="text-sm text-foreground leading-relaxed">
-                <strong className="font-mono text-pastel-green-text">{species.length} espèces</strong> répertoriées.
-                {species[0] && ` Principale : ${species[0].vernacularName || species[0].scientificName} (${species[0].count} obs.).`}
-              </p>
-              <button
-                onClick={() => onLayerSelect?.('nature', species)}
-                className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-widest text-pastel-green-text hover:text-foreground transition-colors"
-              >
-                <HugeiconsIcon icon={Location01Icon} size={11} />
-                Voir sur la carte
-              </button>
-            </div>
+            <p className="text-sm text-foreground leading-relaxed">
+              <strong className="font-mono text-pastel-green-text">{species.length} espèces</strong> répertoriées.
+              {species[0] && ` Principale : ${species[0].vernacularName || species[0].scientificName} (${species[0].count} obs.).`}
+            </p>
+            <button
+              onClick={() => onLayerSelect?.('nature', species)}
+              className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-pastel-green-text hover:text-foreground transition-colors"
+            >
+              <HugeiconsIcon icon={Location01Icon} size={11} />
+              Voir sur la carte
+            </button>
           </div>
         ) : null;
 
@@ -715,40 +771,35 @@ function ExploreTab({
         if (quakes.length === 0) return null;
         const maxMag = Math.max(...quakes.map(q => q.magnitude));
         return (
-          <div key="quakes_brief" className="px-5 pt-5 animate-fade-in-up">
+          <div key="quakes_brief" className="px-5 pt-4 animate-fade-in-up">
             <SectionTitle icon={Alert02Icon}>Activité sismique</SectionTitle>
-            <div className="bg-pastel-red-bg/30 rounded-2xl p-4 border border-pastel-red-text/8">
-              <p className="text-sm text-foreground leading-relaxed">
-                <strong className="font-mono text-pastel-red-text">{quakes.length} secousses</strong> (30j, 300km).
-                Max : <strong className="font-mono text-pastel-red-text">M{maxMag.toFixed(1)}</strong>.
-              </p>
-              <button
-                onClick={() => onLayerSelect?.('quakes', quakes)}
-                className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-widest text-pastel-red-text hover:text-foreground transition-colors"
-              >
-                <HugeiconsIcon icon={Location01Icon} size={11} />
-                Voir sur la carte
-              </button>
-            </div>
+            <p className="text-sm text-foreground leading-relaxed">
+              <strong className="font-mono text-pastel-red-text">{quakes.length} secousses</strong> (30j, 300km).
+              Max : <strong className="font-mono text-pastel-red-text">M{maxMag.toFixed(1)}</strong>.
+            </p>
+            <button
+              onClick={() => onLayerSelect?.('quakes', quakes)}
+              className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-pastel-red-text hover:text-foreground transition-colors"
+            >
+              <HugeiconsIcon icon={Location01Icon} size={11} />
+              Voir sur la carte
+            </button>
           </div>
         );
       }
 
       case "navigation":
         return (
-          <div key="navigation" className="px-5 pt-5 pb-4 animate-fade-in-up">
+          <div key="navigation" className="px-5 pt-4 pb-4 animate-fade-in-up">
             <SectionTitle icon={Navigation03Icon}>Navigation</SectionTitle>
-            <div className="flex gap-2">
-              <a href={generateGoogleMapsLink(lat, lon)} target="_blank" rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 rounded-2xl bg-card border border-border/40 shadow-subtle px-3 py-3 text-xs font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
-              >
-                Google Maps
-              </a>
-              <a href={generateAppleMapsLink(lat, lon, locationName)} target="_blank" rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 rounded-2xl bg-card border border-border/40 shadow-subtle px-3 py-3 text-xs font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
-              >
-                Apple Maps
-              </a>
+            <div className="grid grid-cols-2 gap-1.5">
+              {getNavigationOptions(lat, lon, locationName).map((opt) => (
+                <a key={opt.label} href={opt.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-border/20 px-3 py-2.5 text-[11px] font-medium text-foreground hover:bg-muted/30 transition-all"
+                >
+                  {opt.label}
+                </a>
+              ))}
             </div>
           </div>
         );
@@ -782,12 +833,13 @@ const POI_CATEGORIES = [
   { key: "other", label: "Autres" },
 ];
 
-function AutourTab({ pois, loading, lat, lon, traits }: {
+function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
   pois: NearbyPOI[];
   loading: boolean;
   lat: number;
   lon: number;
   traits: Set<SituationTrait>;
+  locationName: string;
 }) {
   const [activeFilter, setActiveFilter] = useState("all");
 
@@ -823,6 +875,8 @@ function AutourTab({ pois, loading, lat, lon, traits }: {
     return pois.filter(p => matchingKeys.includes(p.category));
   }, [pois, activeFilter]);
 
+  const navOptions = getNavigationOptions(lat, lon, locationName);
+
   return (
     <div className="pb-8 animate-fade-in-up">
       <div className="px-5 pt-4 pb-4">
@@ -841,7 +895,7 @@ function AutourTab({ pois, loading, lat, lon, traits }: {
               onClick={() => setActiveFilter(cat.key)}
               className={`snap-start shrink-0 rounded-full px-3 py-1.5 text-[10px] uppercase tracking-widest border transition-all ${
                 activeFilter === cat.key
-                  ? "bg-primary text-primary-foreground border-primary font-semibold shadow-soft"
+                  ? "bg-primary text-primary-foreground border-primary font-semibold"
                   : "bg-transparent text-muted-foreground border-border/40 hover:bg-muted/50"
               }`}
             >
@@ -853,33 +907,33 @@ function AutourTab({ pois, loading, lat, lon, traits }: {
         {loading ? (
           <AutourSkeleton />
         ) : pois.length === 0 ? (
-          <div className="surface-soft rounded-2xl p-5 mt-2">
+          <div className="py-5">
             <p className="text-sm text-foreground">Aucun lieu d'intérêt trouvé.</p>
             <p className="text-xs text-muted-foreground/60 mt-1">Essayez un endroit plus peuplé.</p>
           </div>
         ) : filteredPois.length === 0 ? (
-          <div className="surface-soft rounded-2xl p-5 mt-2">
+          <div className="py-5">
             <p className="text-sm text-foreground">Aucun résultat pour ce filtre.</p>
           </div>
         ) : (
-          <div className="surface-soft rounded-2xl overflow-hidden mt-2">
+          <div className="border-t border-border/15">
             {filteredPois.map((poi, i) => {
               const isEmergency = poi.category === 'Hôpital' || poi.category === 'Pharmacie' || poi.category === 'Police';
               return (
                 <a
                   key={i}
-                  href={generateGoogleMapsLink(poi.lat || lat, poi.lon || lon)}
+                  href={navOptions[0]?.url || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex items-center justify-between py-3 px-4 border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors ${
-                    isEmergency && traits.has("VITAL") ? 'bg-pastel-red-bg/15' : ''
+                  className={`flex items-center justify-between py-3 border-b border-border/15 last:border-0 hover:bg-muted/20 transition-colors ${
+                    isEmergency && traits.has("VITAL") ? 'bg-pastel-red-bg/10' : ''
                   }`}
                 >
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider mt-0.5 ${
                       isEmergency
                         ? 'bg-pastel-red-bg text-pastel-red-text font-semibold'
-                        : 'bg-muted/50 text-muted-foreground'
+                        : 'bg-muted/40 text-muted-foreground'
                     }`}>
                       {poi.category}
                     </span>
@@ -907,16 +961,15 @@ function ExploreSkeleton() {
     <div className="px-5 py-6 space-y-6 animate-pulse">
       <div className="space-y-3">
         <div className="h-3 w-1/3 bg-muted rounded-full" />
-        <div className="h-24 w-full bg-muted/60 rounded-2xl" />
-        <div className="h-24 w-full bg-muted/60 rounded-2xl" />
+        <div className="h-20 w-full bg-muted/60 rounded-2xl" />
       </div>
-      <div className="h-52 w-full bg-muted/40 rounded-2xl" />
+      <div className="h-36 w-full bg-muted/40 rounded-2xl" />
       <div className="space-y-3">
         <div className="h-3 w-1/4 bg-muted rounded-full" />
-        <div className="grid grid-cols-3 gap-1.5">
-          <div className="h-20 bg-muted/50 rounded-2xl col-span-2 row-span-2" />
-          <div className="h-16 bg-muted/50 rounded-2xl" />
-          <div className="h-16 bg-muted/50 rounded-2xl" />
+        <div className="grid grid-cols-3 gap-1">
+          <div className="h-16 bg-muted/50 rounded-xl col-span-2 row-span-2" />
+          <div className="h-14 bg-muted/50 rounded-xl" />
+          <div className="h-14 bg-muted/50 rounded-xl" />
         </div>
       </div>
     </div>
@@ -925,9 +978,9 @@ function ExploreSkeleton() {
 
 function AutourSkeleton() {
   return (
-    <div className="space-y-0 py-4 animate-pulse surface-soft rounded-2xl overflow-hidden mt-2">
+    <div className="space-y-0 py-4 animate-pulse border-t border-border/15 mt-2">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="flex justify-between items-center py-3 px-4 border-b border-border/20 last:border-0">
+        <div key={i} className="flex justify-between items-center py-3 border-b border-border/15 last:border-0">
           <div className="flex gap-3 items-center">
             <div className="h-5 w-14 bg-muted rounded-full" />
             <div className="h-4 w-28 bg-muted/60 rounded-full" />
@@ -942,7 +995,7 @@ function AutourSkeleton() {
 // ─── Shared primitives ───────────────────────────────────────────────
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`pt-5 pb-4 ${className || ''}`}>
+    <div className={`pt-4 pb-3 ${className || ''}`}>
       <SectionTitle>{title}</SectionTitle>
       {children}
     </div>
@@ -951,7 +1004,7 @@ function Section({ title, children, className }: { title: string; children: Reac
 
 function SectionTitle({ children, icon, className }: { children: React.ReactNode; icon?: any; className?: string }) {
   return (
-    <h2 className={`flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70 mb-3 ${className || ''}`}>
+    <h2 className={`flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70 mb-2 ${className || ''}`}>
       {icon && <HugeiconsIcon icon={icon} size={12} className="text-muted-foreground/50" />}
       {children}
     </h2>
@@ -960,9 +1013,9 @@ function SectionTitle({ children, icon, className }: { children: React.ReactNode
 
 function MetricCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-muted/30 rounded-xl p-3 border border-border/20">
-      <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60">{label}</p>
-      <p className="text-sm font-mono mt-0.5 text-foreground">{value}</p>
+    <div className="bg-background p-2.5">
+      <p className="text-[8px] uppercase tracking-widest text-muted-foreground/60">{label}</p>
+      <p className="text-xs font-mono mt-0.5 text-foreground">{value}</p>
     </div>
   );
 }
