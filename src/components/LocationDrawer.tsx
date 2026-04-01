@@ -6,9 +6,10 @@ import { generateNarrative } from "@/lib/narrative";
 import {
   fetchWikipediaSummary, fetchWikimediaPhotos, fetchCountryInfo,
   fetchNearbyPOIs, fetchEarthquakes, fetchGBIFSpecies, fetchEONETEvents, fetchINaturalistSpecies,
+  fetchReliefWebDisasters, fetchOpenFEMADeclarations, fetchCityBikes,
   getNavigationOptions,
   type WikiSummary, type WikimediaPhoto, type CountryInfo,
-  type NearbyPOI, type Earthquake, type GBIFSpecies, type NaturalEvent,
+  type NearbyPOI, type Earthquake, type GBIFSpecies, type NaturalEvent, type BikeStation,
 } from "@/lib/enrichment";
 import NarrativeCard from "./NarrativeCard";
 import HourlyForecast from "./HourlyForecast";
@@ -48,6 +49,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
   const [quakes, setQuakes] = useState<Earthquake[]>([]);
   const [species, setSpecies] = useState<GBIFSpecies[]>([]);
   const [naturalEvents, setNaturalEvents] = useState<NaturalEvent[]>([]);
+  const [bikeStations, setBikeStations] = useState<BikeStation[]>([]);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [traits, setTraits] = useState<Set<SituationTrait>>(new Set());
 
@@ -66,25 +68,38 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     setQuakes([]);
     setSpecies([]);
     setNaturalEvents([]);
+    setBikeStations([]);
     setActiveTab("explore");
 
+    // 1. Lance les requêtes de manière asynchrone sans bloquer le UI
+    fetchWikipediaSummary(lat, lon, locationName).then(w => { if(w) setWiki(w); });
+    fetchWikimediaPhotos(lat, lon, 6).then(p => { if(p.length > 0) { setPhotos(p); onPhotosLoaded?.(p); }});
+    fetchCountryInfo(lat, lon).then(c => { 
+      if(c) {
+        setCountry(c);
+        // Cascading fetches dependent on country code (ReliefWeb, FEMA)
+        const code = c.tld.replace('.', '').toUpperCase() || "FR"; // Approximatif, idéalement on aurait le cca2
+        fetchReliefWebDisasters(lat, lon, code).then(e => { if(e.length > 0) setNaturalEvents(prev => [...prev, ...e]); });
+        fetchOpenFEMADeclarations(lat, lon, code).then(e => { if(e.length > 0) setNaturalEvents(prev => [...prev, ...e]); });
+      }
+    });
+    fetchNearbyPOIs(lat, lon, 2000).then(p => { if(p.length > 0) setPois(p); });
+    fetchCityBikes(lat, lon, 2000).then(b => { if(b.length > 0) setBikeStations(b); });
+    fetchEarthquakes(lat, lon, 300, 30).then(q => { if(q.length > 0) setQuakes(q); });
+    fetchGBIFSpecies(lat, lon).then(s => { if(s.length > 0) setSpecies(prev => { const map = new Map([...prev, ...s].map(x => [x.scientificName, x])); return Array.from(map.values()); }); });
+    fetchINaturalistSpecies(lat, lon).then(s => { if(s.length > 0) setSpecies(prev => { const map = new Map([...prev, ...s].map(x => [x.scientificName, x])); return Array.from(map.values()); }); });
+    fetchEONETEvents(lat, lon, 500).then(e => { if(e.length > 0) setNaturalEvents(prev => [...prev, ...e]); });
+
+    // 2. Met à jour les traits (intelligence situationnelle) une fois l'essentiel chargé
     Promise.allSettled([
-      fetchWikipediaSummary(lat, lon, locationName).then(w => { setWiki(w); return w; }),
-      fetchWikimediaPhotos(lat, lon, 6).then(p => { setPhotos(p); return p; }),
-      fetchCountryInfo(lat, lon).then(c => { setCountry(c); return c; }),
-      fetchNearbyPOIs(lat, lon, 2000).then(p => { setPois(p); return p; }),
-      fetchEarthquakes(lat, lon, 300, 30).then(q => { setQuakes(q); return q; }),
-      fetchGBIFSpecies(lat, lon).then(s => { setSpecies(prev => [...prev, ...s]); return s; }),
-      fetchINaturalistSpecies(lat, lon).then(s => { setSpecies(prev => [...prev, ...s]); return s; }),
-      fetchEONETEvents(lat, lon, 500).then(e => { setNaturalEvents(e); return e; }),
+      fetchWikipediaSummary(lat, lon, locationName),
+      fetchNearbyPOIs(lat, lon, 2000),
+      fetchEarthquakes(lat, lon, 300, 30),
     ]).then((results) => {
       const wp = results[0].status === 'fulfilled' ? results[0].value : null;
-      const cp = results[3].status === 'fulfilled' ? (results[3].value || []) : [];
-      const eq = results[4].status === 'fulfilled' ? (results[4].value || []) : [];
-      const pt = results[1].status === 'fulfilled' ? (results[1].value || []) : [];
+      const cp = results[1].status === 'fulfilled' ? (results[1].value || []) : [];
+      const eq = results[2].status === 'fulfilled' ? (results[2].value || []) : [];
       
-      if (pt.length > 0) onPhotosLoaded?.(pt);
-
       const newTraits = detectSituations({
         locationName,
         weather,
@@ -96,7 +111,8 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
       });
       setTraits(newTraits);
       onTraitsChange?.(newTraits);
-    }).finally(() => setEnrichLoading(false));
+      setEnrichLoading(false); // Le Skeleton disparaît ici, mais les données visuelles sont déjà entrain d'apparaître
+    }).catch(() => setEnrichLoading(false));
   }, [open, lat, lon, locationName, weather, zoomLevel]);
 
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -271,6 +287,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               quakes={quakes}
               species={species}
               naturalEvents={naturalEvents}
+              bikeStations={bikeStations}
               lat={lat}
               lon={lon}
               locationName={locationName}
@@ -288,6 +305,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
           {activeTab === "autour" && (
             <AutourTab
               pois={pois}
+              bikeStations={bikeStations}
               loading={enrichLoading}
               lat={lat}
               lon={lon}
@@ -418,7 +436,7 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
 
 // ─── Explorer Tab ────────────────────────────────────────────────────
 function ExploreTab({
-  wiki, photos, country, pois, quakes, species, naturalEvents, lat, lon, locationName, loading, setActiveTab, weather, narrative, traits, onLayerSelect
+  wiki, photos, country, pois, quakes, species, naturalEvents, bikeStations, lat, lon, locationName, loading, setActiveTab, weather, narrative, traits, onLayerSelect
 }: {
   wiki: WikiSummary | null;
   photos: WikimediaPhoto[];
@@ -427,6 +445,7 @@ function ExploreTab({
   quakes: Earthquake[];
   species: GBIFSpecies[];
   naturalEvents: NaturalEvent[];
+  bikeStations: BikeStation[];
   lat: number;
   lon: number;
   locationName: string;
@@ -439,7 +458,38 @@ function ExploreTab({
 }) {
   const priorities = useMemo(() => calculateModuleWeights(traits), [traits]);
 
-  if (loading) return <ExploreSkeleton />;
+  if (loading) return (
+    <div className="px-5 py-6 space-y-8 animate-pulse">
+      {/* Header skeleton */}
+      <div className="flex gap-4">
+        <div className="h-16 w-16 bg-muted/60 rounded-2xl shrink-0" />
+        <div className="space-y-3 flex-1 pt-1">
+          <div className="h-4 w-1/3 bg-muted rounded-full" />
+          <div className="h-3 w-1/2 bg-muted/60 rounded-full" />
+        </div>
+      </div>
+      
+      {/* Story skeleton */}
+      <div className="h-40 w-full bg-muted/40 rounded-2xl" />
+      
+      {/* Modules skeleton */}
+      <div className="space-y-4">
+        <div className="h-3 w-1/4 bg-muted rounded-full" />
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="h-24 bg-muted/50 rounded-xl col-span-2 row-span-2" />
+          <div className="h-11 bg-muted/50 rounded-xl" />
+          <div className="h-11 bg-muted/50 rounded-xl" />
+        </div>
+      </div>
+      
+      {/* List skeleton */}
+      <div className="space-y-3 pt-2 border-t border-border/10">
+        <div className="h-10 bg-muted/30 rounded-xl w-full" />
+        <div className="h-10 bg-muted/30 rounded-xl w-full" />
+        <div className="h-10 bg-muted/30 rounded-xl w-full" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="pb-10">
@@ -650,15 +700,20 @@ function ExploreTab({
       case "events_brief":
         return naturalEvents.length > 0 ? (
           <div key="events_brief" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={Alert02Icon}>Événements Naturels</SectionTitle>
+            <SectionTitle icon={Alert02Icon}>Alertes & Crises</SectionTitle>
             <div className="space-y-px">
               {naturalEvents.map((evt, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/15 last:border-0">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-foreground mb-0.5">{evt.title}</p>
-                    <p className="text-[10px] text-pastel-red-text uppercase tracking-widest">{evt.category}</p>
+                    <div className="flex gap-2">
+                      <span className="text-[10px] text-pastel-red-text uppercase tracking-widest">{evt.category}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-widest">({evt.source})</span>
+                    </div>
                   </div>
-                  <span className="text-xs font-mono text-pastel-red-text ml-3 shrink-0">{evt.distanceKm} km</span>
+                  <span className="text-xs font-mono text-pastel-red-text ml-3 shrink-0">
+                    {evt.distanceKm > 0 ? `${evt.distanceKm} km` : "National"}
+                  </span>
                 </div>
               ))}
             </div>
@@ -713,7 +768,7 @@ function ExploreTab({
         ) : null;
 
       case "pois":
-        return pois.length > 0 ? (
+        return pois.length > 0 || bikeStations.length > 0 ? (
           <div key="pois" className="px-5 pt-4 animate-fade-in-up">
             <div className="flex items-center justify-between mb-2">
               <SectionTitle icon={Location01Icon} className="mb-0">
@@ -728,17 +783,26 @@ function ExploreTab({
               </button>
             </div>
             <div className="border-t border-border/15">
-              {pois.slice(0, 5).map((poi, i) => (
+              {/* Combine POIs and BikeStations, sort by distance, take top 5 */}
+              {[...pois, ...bikeStations.map(b => ({ name: b.name, category: "Vélos", distance: b.distance, isBike: true, free_bikes: b.free_bikes }))]
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, 5)
+                .map((poi: any, i) => (
                 <div key={i} className={`flex items-center justify-between py-2.5 border-b border-border/15 last:border-0 ${poi.category === 'Hôpital' || poi.category === 'Pharmacie' ? 'bg-pastel-red-bg/10' : ''}`}>
                   <div className="flex items-start gap-2 min-w-0 flex-1">
                     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider mt-0.5 ${
                       poi.category === 'Hôpital' || poi.category === 'Pharmacie' 
                         ? 'bg-pastel-red-bg text-pastel-red-text font-semibold' 
-                        : 'bg-muted/40 text-muted-foreground'
+                        : poi.isBike
+                          ? 'bg-pastel-blue-bg text-pastel-blue-text font-semibold'
+                          : 'bg-muted/40 text-muted-foreground'
                     }`}>
                       {poi.category}
                     </span>
-                    <span className="text-sm text-foreground truncate">{poi.name}</span>
+                    <span className="text-sm text-foreground truncate">
+                      {poi.name}
+                      {poi.isBike && <span className="ml-2 text-[10px] text-muted-foreground">({poi.free_bikes} dispos)</span>}
+                    </span>
                   </div>
                   <span className="text-xs font-mono text-muted-foreground/60 ml-2 shrink-0">
                     {poi.distance < 1000 ? `${poi.distance}m` : `${(poi.distance / 1000).toFixed(1)}km`}
@@ -811,11 +875,40 @@ function ExploreTab({
 
   return (
     <div className="pb-8">
-      {loading ? (
-        <ExploreSkeleton />
-      ) : (
-        priorities.map((p) => renderModule(p.id))
-      )}
+        {loading ? (
+          <div className="px-5 py-6 space-y-8 animate-pulse">
+            {/* Header skeleton */}
+            <div className="flex gap-4">
+              <div className="h-16 w-16 bg-muted/60 rounded-2xl shrink-0" />
+              <div className="space-y-3 flex-1 pt-1">
+                <div className="h-4 w-1/3 bg-muted rounded-full" />
+                <div className="h-3 w-1/2 bg-muted/60 rounded-full" />
+              </div>
+            </div>
+            
+            {/* Story skeleton */}
+            <div className="h-40 w-full bg-muted/40 rounded-2xl" />
+            
+            {/* Modules skeleton */}
+            <div className="space-y-4">
+              <div className="h-3 w-1/4 bg-muted rounded-full" />
+              <div className="grid grid-cols-3 gap-1.5">
+                <div className="h-24 bg-muted/50 rounded-xl col-span-2 row-span-2" />
+                <div className="h-11 bg-muted/50 rounded-xl" />
+                <div className="h-11 bg-muted/50 rounded-xl" />
+              </div>
+            </div>
+            
+            {/* List skeleton */}
+            <div className="space-y-3 pt-2 border-t border-border/10">
+              <div className="h-10 bg-muted/30 rounded-xl w-full" />
+              <div className="h-10 bg-muted/30 rounded-xl w-full" />
+              <div className="h-10 bg-muted/30 rounded-xl w-full" />
+            </div>
+          </div>
+        ) : (
+          priorities.map((p) => renderModule(p.id))
+        )}
     </div>
   );
 }
@@ -833,8 +926,9 @@ const POI_CATEGORIES = [
   { key: "other", label: "Autres" },
 ];
 
-function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
+function AutourTab({ pois, bikeStations, loading, lat, lon, traits, locationName }: {
   pois: NearbyPOI[];
+  bikeStations: BikeStation[];
   loading: boolean;
   lat: number;
   lon: number;
@@ -843,8 +937,24 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
 }) {
   const [activeFilter, setActiveFilter] = useState("all");
 
+  const combinedData = useMemo(() => {
+    return [
+      ...pois,
+      ...bikeStations.map(b => ({
+        name: b.name,
+        category: "Vélos",
+        type: "vélos",
+        distance: b.distance,
+        lat: b.lat,
+        lon: b.lon,
+        isBike: true,
+        free_bikes: b.free_bikes
+      }))
+    ].sort((a, b) => a.distance - b.distance);
+  }, [pois, bikeStations]);
+
   const availableCategories = useMemo(() => {
-    const cats = new Set(pois.map(p => p.category));
+    const cats = new Set(combinedData.map(p => p.category));
     const chips = [{ key: "all", label: "Tout" }];
     const seen = new Set<string>();
     
@@ -856,24 +966,31 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
       }
     });
     
-    const knownCats = new Set(POI_CATEGORIES.map(c => c.key));
-    const hasOther = pois.some(p => !knownCats.has(p.category));
+    // Add CityBikes category if present
+    if (cats.has("Vélos") && !seen.has("Mobilité")) {
+      chips.push({ key: "Vélos", label: "Mobilité" });
+      seen.add("Mobilité");
+    }
+    
+    const knownCats = new Set([...POI_CATEGORIES.map(c => c.key), "Vélos"]);
+    const hasOther = combinedData.some(p => !knownCats.has(p.category));
     if (hasOther) chips.push({ key: "other", label: "Autres" });
     
     return chips;
-  }, [pois]);
+  }, [combinedData]);
 
   const filteredPois = useMemo(() => {
-    if (activeFilter === "all") return pois;
+    if (activeFilter === "all") return combinedData;
+    if (activeFilter === "Vélos") return combinedData.filter(p => p.category === "Vélos");
     if (activeFilter === "other") {
-      const knownCats = new Set(POI_CATEGORIES.map(c => c.key));
-      return pois.filter(p => !knownCats.has(p.category));
+      const knownCats = new Set([...POI_CATEGORIES.map(c => c.key), "Vélos"]);
+      return combinedData.filter(p => !knownCats.has(p.category));
     }
     const matchingKeys = POI_CATEGORIES
       .filter(c => c.label === POI_CATEGORIES.find(pc => pc.key === activeFilter)?.label)
       .map(c => c.key);
-    return pois.filter(p => matchingKeys.includes(p.category));
-  }, [pois, activeFilter]);
+    return combinedData.filter(p => matchingKeys.includes(p.category));
+  }, [combinedData, activeFilter]);
 
   const navOptions = getNavigationOptions(lat, lon, locationName);
 
@@ -905,8 +1022,18 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
         </div>
 
         {loading ? (
-          <AutourSkeleton />
-        ) : pois.length === 0 ? (
+          <div className="space-y-0 py-4 animate-pulse border-t border-border/15 mt-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-3.5 border-b border-border/15 last:border-0">
+                <div className="flex gap-3 items-center w-full max-w-[200px]">
+                  <div className="h-6 w-16 bg-muted/80 rounded-full" />
+                  <div className="h-4 w-full bg-muted/50 rounded-full" />
+                </div>
+                <div className="h-3 w-10 bg-muted/40 rounded-full ml-4" />
+              </div>
+            ))}
+          </div>
+        ) : combinedData.length === 0 ? (
           <div className="py-5">
             <p className="text-sm text-foreground">Aucun lieu d'intérêt trouvé.</p>
             <p className="text-xs text-muted-foreground/60 mt-1">Essayez un endroit plus peuplé.</p>
@@ -917,7 +1044,7 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
           </div>
         ) : (
           <div className="border-t border-border/15">
-            {filteredPois.map((poi, i) => {
+            {filteredPois.map((poi: any, i) => {
               const isEmergency = poi.category === 'Hôpital' || poi.category === 'Pharmacie' || poi.category === 'Police';
               return (
                 <a
@@ -933,11 +1060,16 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
                     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider mt-0.5 ${
                       isEmergency
                         ? 'bg-pastel-red-bg text-pastel-red-text font-semibold'
-                        : 'bg-muted/40 text-muted-foreground'
+                        : poi.isBike
+                          ? 'bg-pastel-blue-bg text-pastel-blue-text font-semibold'
+                          : 'bg-muted/40 text-muted-foreground'
                     }`}>
                       {poi.category}
                     </span>
-                    <span className="text-sm text-foreground truncate block">{poi.name}</span>
+                    <span className="text-sm text-foreground truncate block">
+                      {poi.name}
+                      {poi.isBike && <span className="ml-2 text-[10px] text-muted-foreground">({poi.free_bikes} dispos)</span>}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span className="text-xs font-mono text-muted-foreground/50">
@@ -951,43 +1083,6 @@ function AutourTab({ pois, loading, lat, lon, traits, locationName }: {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ─── Loading Skeletons ───────────────────────────────────────────────
-function ExploreSkeleton() {
-  return (
-    <div className="px-5 py-6 space-y-6 animate-pulse">
-      <div className="space-y-3">
-        <div className="h-3 w-1/3 bg-muted rounded-full" />
-        <div className="h-20 w-full bg-muted/60 rounded-2xl" />
-      </div>
-      <div className="h-36 w-full bg-muted/40 rounded-2xl" />
-      <div className="space-y-3">
-        <div className="h-3 w-1/4 bg-muted rounded-full" />
-        <div className="grid grid-cols-3 gap-1">
-          <div className="h-16 bg-muted/50 rounded-xl col-span-2 row-span-2" />
-          <div className="h-14 bg-muted/50 rounded-xl" />
-          <div className="h-14 bg-muted/50 rounded-xl" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AutourSkeleton() {
-  return (
-    <div className="space-y-0 py-4 animate-pulse border-t border-border/15 mt-2">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="flex justify-between items-center py-3 border-b border-border/15 last:border-0">
-          <div className="flex gap-3 items-center">
-            <div className="h-5 w-14 bg-muted rounded-full" />
-            <div className="h-4 w-28 bg-muted/60 rounded-full" />
-          </div>
-          <div className="h-3 w-8 bg-muted/40 rounded-full" />
-        </div>
-      ))}
     </div>
   );
 }

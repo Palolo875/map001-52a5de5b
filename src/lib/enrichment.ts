@@ -362,6 +362,7 @@ export interface NaturalEvent {
   distanceKm: number;
   lat: number;
   lon: number;
+  source: "EONET" | "ReliefWeb" | "FEMA";
 }
 
 export async function fetchEONETEvents(lat: number, lon: number, radiusKm = 500): Promise<NaturalEvent[]> {
@@ -394,12 +395,123 @@ export async function fetchEONETEvents(lat: number, lon: number, radiusKm = 500)
             distanceKm: dist,
             lat: eLat,
             lon: eLon,
+            source: "EONET"
           });
         }
       }
     }
     
     return result.sort((a, b) => a.distanceKm - b.distanceKm);
+  } catch {
+    return [];
+  }
+}
+
+// ─── ReliefWeb (Humanitarian Crises) ─────────────────────────────────
+export async function fetchReliefWebDisasters(lat: number, lon: number, countryCode: string): Promise<NaturalEvent[]> {
+  try {
+    // We query active disasters for the country
+    const res = await fetch(
+      `https://api.reliefweb.int/v1/disasters?appname=AtlasNav&profile=full&preset=latest&limit=5&query[value]=status:current AND country.iso3:${countryCode}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    return (data.data || []).map((d: any) => ({
+      id: d.id,
+      title: d.fields.name,
+      category: d.fields.primary_type?.name || "Crise",
+      date: d.fields.date?.created || new Date().toISOString(),
+      distanceKm: 0, // Country level
+      lat,
+      lon,
+      source: "ReliefWeb"
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─── OpenFEMA (US Declarations) ──────────────────────────────────────
+export async function fetchOpenFEMADeclarations(lat: number, lon: number, countryCode: string): Promise<NaturalEvent[]> {
+  if (countryCode !== 'US') return [];
+  
+  try {
+    const year = new Date().getFullYear();
+    const res = await fetch(
+      `https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries?$filter=declarationDate ge '${year}-01-01T00:00:00.000z'&$orderby=declarationDate desc&$top=5`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    return (data.DisasterDeclarationsSummaries || []).map((d: any) => ({
+      id: d.id,
+      title: d.declarationTitle,
+      category: d.incidentType || "Alerte US",
+      date: d.declarationDate,
+      distanceKm: 0, // State/County level generally
+      lat,
+      lon,
+      source: "FEMA"
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─── CityBikes (Urban Mobility) ──────────────────────────────────────
+export interface BikeStation {
+  name: string;
+  free_bikes: number;
+  empty_slots: number;
+  distance: number;
+  lat: number;
+  lon: number;
+}
+
+export async function fetchCityBikes(lat: number, lon: number, radiusM = 2000): Promise<BikeStation[]> {
+  try {
+    // 1. Get all networks
+    const networksRes = await fetch('http://api.citybik.es/v2/networks');
+    if (!networksRes.ok) return [];
+    const networksData = await networksRes.json();
+    
+    // 2. Find closest network
+    let closestNetwork = null;
+    let minNetworkDist = Infinity;
+    
+    for (const network of networksData.networks || []) {
+      const dist = haversine(lat, lon, network.location.latitude, network.location.longitude);
+      if (dist < minNetworkDist && dist < 50000) { // Network must be within 50km
+        minNetworkDist = dist;
+        closestNetwork = network;
+      }
+    }
+    
+    if (!closestNetwork) return [];
+
+    // 3. Get stations for this network
+    const stationRes = await fetch(`http://api.citybik.es${closestNetwork.href}`);
+    if (!stationRes.ok) return [];
+    const stationData = await stationRes.json();
+    
+    // 4. Filter stations within radius
+    const stations: BikeStation[] = [];
+    for (const st of stationData.network?.stations || []) {
+      const dist = haversine(lat, lon, st.latitude, st.longitude);
+      if (dist <= radiusM) {
+        stations.push({
+          name: st.name,
+          free_bikes: st.free_bikes || 0,
+          empty_slots: st.empty_slots || 0,
+          distance: Math.round(dist),
+          lat: st.latitude,
+          lon: st.longitude,
+        });
+      }
+    }
+    
+    return stations.sort((a, b) => a.distance - b.distance).slice(0, 5);
   } catch {
     return [];
   }

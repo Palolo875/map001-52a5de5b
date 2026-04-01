@@ -32,9 +32,15 @@ export async function searchPlaces(query: string): Promise<GeoResult[]> {
       return localResults.slice(0, 5); 
     }
 
+    // 1.5 SPECIALIST: Base Adresse Nationale (France)
+    // We try to fetch from BAN. If we get good results, we merge them.
+    const banResults = await searchBAN(query);
+
     // 2. FALLBACK_ONLY: External APIs (Photon)
     const external = await searchPhoton(query);
-    return [...localResults, ...external].slice(0, 5);
+    
+    // We prioritize BAN for French context, then Local, then Photon
+    return [...banResults, ...localResults, ...external].slice(0, 5);
   } catch {
     // Fallback to Nominatim if Photon is down
     return await searchNominatim(query);
@@ -62,6 +68,26 @@ async function searchLocalGeonames(query: string): Promise<GeoResult[]> {
         ...city,
         type: "city"
       }));
+  } catch {
+    return [];
+  }
+}
+
+async function searchBAN(query: string): Promise<GeoResult[]> {
+  try {
+    const res = await fetch(
+      `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=3`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.features || []).map((f: any) => ({
+      name: f.properties.label,
+      country: "France",
+      city: f.properties.city,
+      lat: f.geometry.coordinates[1],
+      lon: f.geometry.coordinates[0],
+      type: f.properties.type,
+    }));
   } catch {
     return [];
   }

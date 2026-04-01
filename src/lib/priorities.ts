@@ -17,7 +17,10 @@ export type SituationTrait =
   | "CULTURAL" 
   | "TRANSIT"
   | "MARITIME"
-  | "ISOLATED";
+  | "ISOLATED"
+  | "NOCTURNE"
+  | "HOSTILE"
+  | "FOREIGN";
 
 export interface ModulePriority {
   id: string;
@@ -38,6 +41,81 @@ export type ModuleId =
   | "nature_brief" // Compact biodiversity summary (replaces full Nature tab)
   | "wiki_brief"   // Wikipedia excerpt inline
   | "isolated_brief"; // Graceful empty state for oceans/deserts
+
+// ─── Weight Modifiers Matrix ─────────────────────────────────────────
+// Instead of complex if/else chains, we define how each trait modifies
+// the base weight of each module. 
+// Null/undefined means no modification.
+const TRAIT_MODIFIERS: Record<SituationTrait, Partial<Record<ModuleId, number>>> = {
+  VITAL: {
+    pois: +200,         // Hospitals/police → top
+    navigation: +180,   // "Get me there NOW"
+    narrative: +50,     // Alert signals stay high
+    story: -60,         // Entertainment drops
+    photos: -40,
+    wiki_brief: -30,
+    nature_brief: -50
+  },
+  ATLAS: {
+    country: +120,      // Country card → top
+    wiki_brief: +40,    // Cultural context rises
+    story: +20,
+    pois: -30,          // Local POIs less meaningful at country scale
+    nature_brief: -10
+  },
+  WILD: {
+    narrative: +60,     // Weather/UV/altitude warnings → critical
+    nature_brief: +80,  // Biodiversity is the star
+    photos: +30,        // Landscape photos
+    pois: -20,          // Few POIs in wild areas anyway
+    country: -20
+  },
+  URBAN: {
+    pois: +60,          // Services are what matters
+    narrative: +30,     // Air quality, comfort
+    navigation: +20,    // Transit links
+    quakes_brief: -10,
+    nature_brief: -10
+  },
+  CULTURAL: {
+    wiki_brief: +80,    // Wikipedia content is king
+    photos: +50,        // Historical photos
+    story: +30          // Rich storytelling
+  },
+  TRANSIT: {
+    pois: +100,         // Nearby stations/stops
+    navigation: +70,    // Route planning
+    story: -30,
+    nature_brief: -30
+  },
+  MARITIME: {
+    narrative: +50,     // Wave/wind signals
+    nature_brief: +40,  // Marine biodiversity
+    pois: -20           // Few POIs at sea
+  },
+  ISOLATED: {
+    isolated_brief: +200, // Tops the list just under narrative
+    navigation: +20
+  },
+  NOCTURNE: {
+    pois: +40,          // Hotels/Nightlife
+    photos: -30,        // Visuals less relevant at night
+    nature_brief: -20,
+    wiki_brief: -20
+  },
+  HOSTILE: {
+    narrative: +300,    // SURVIVAL MODE: Weather/Alerts must be at the very top
+    events_brief: +150, // NASA/FEMA alerts
+    pois: +100,         // Emergency services
+    story: -100,        // Hide entertainment
+    photos: -100,       // Hide visuals
+    wiki_brief: -100    // Hide culture
+  },
+  FOREIGN: {
+    country: +150,      // Language, Currency, Timezone are crucial
+    wiki_brief: +20     // Context is helpful
+  }
+};
 
 // ─── Weight Calculator ──────────────────────────────────────────────
 // Higher weight = appears higher in the Explore tab.
@@ -61,70 +139,13 @@ export function calculateModuleWeights(traits: Set<SituationTrait>): ModulePrior
   return modules.map(m => {
     let w = m.weight;
 
-    // ── VITAL: Emergency services become the #1 focus ──
-    if (traits.has("VITAL")) {
-      if (m.id === "pois")         w += 200;  // Hospitals/police → top
-      if (m.id === "navigation")   w += 180;  // "Get me there NOW"
-      if (m.id === "narrative")    w += 50;   // Alert signals stay high
-      if (m.id === "story")        w -= 60;   // Entertainment drops
-      if (m.id === "photos")       w -= 40;   // Less relevant
-      if (m.id === "wiki_brief")   w -= 30;
-      if (m.id === "nature_brief") w -= 50;
-    }
-
-    // ── ATLAS: Macro-scale country view ──
-    if (traits.has("ATLAS")) {
-      if (m.id === "country")      w += 120;  // Country card → top
-      if (m.id === "wiki_brief")   w += 40;   // Cultural context rises
-      if (m.id === "story")        w += 20;
-      if (m.id === "pois")         w -= 30;   // Local POIs less meaningful at country scale
-      if (m.id === "nature_brief") w -= 10;
-    }
-
-    // ── WILD: Safety + nature first ──
-    if (traits.has("WILD")) {
-      if (m.id === "narrative")    w += 60;   // Weather/UV/altitude warnings → critical
-      if (m.id === "nature_brief") w += 80;   // Biodiversity is the star
-      if (m.id === "photos")       w += 30;   // Landscape photos
-      if (m.id === "pois")         w -= 20;   // Few POIs in wild areas anyway
-      if (m.id === "country")      w -= 20;
-    }
-
-    // ── URBAN: Services + quality of life ──
-    if (traits.has("URBAN")) {
-      if (m.id === "pois")         w += 60;   // Services are what matters
-      if (m.id === "narrative")    w += 30;   // Air quality, comfort
-      if (m.id === "quakes_brief") w -= 10;
-      if (m.id === "nature_brief") w -= 10;
-    }
-
-    // ── CULTURAL: History + visuals ──
-    if (traits.has("CULTURAL")) {
-      if (m.id === "wiki_brief")   w += 80;   // Wikipedia content is king
-      if (m.id === "photos")       w += 50;   // Historical photos
-      if (m.id === "story")        w += 30;   // Rich storytelling
-    }
-
-    // ── TRANSIT: Mobility + connections ──
-    if (traits.has("TRANSIT")) {
-      if (m.id === "pois")         w += 100;  // Nearby stations/stops
-      if (m.id === "navigation")   w += 70;   // Route planning
-      if (m.id === "story")        w -= 30;
-      if (m.id === "nature_brief") w -= 30;
-    }
-
-    // ── MARITIME: Sea conditions ──
-    if (traits.has("MARITIME")) {
-      if (m.id === "narrative")    w += 50;   // Wave/wind signals
-      if (m.id === "nature_brief") w += 40;   // Marine biodiversity
-      if (m.id === "pois")         w -= 20;   // Few POIs at sea
-    }
-
-    // ── ISOLATED: Oceans, Deserts, Blank spots ──
-    if (traits.has("ISOLATED")) {
-      if (m.id === "isolated_brief") w += 200; // Tops the list just under narrative
-      if (m.id === "navigation")     w += 20;
-    }
+    // Apply modifiers from active traits
+    traits.forEach(trait => {
+      const modifiers = TRAIT_MODIFIERS[trait];
+      if (modifiers && m.id in modifiers) {
+        w += modifiers[m.id as ModuleId] || 0;
+      }
+    });
 
     return { ...m, weight: w };
   }).sort((a, b) => b.weight - a.weight);

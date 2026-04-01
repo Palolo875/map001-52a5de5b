@@ -4,6 +4,7 @@ import SearchBar from "@/components/SearchBar";
 import LocationDrawer from "@/components/LocationDrawer";
 import { fetchWeather, type WeatherData } from "@/lib/weather";
 import { reverseGeocode, type GeoResult } from "@/lib/geocoder";
+import { useToast } from "@/hooks/use-toast";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CompassIcon } from "@hugeicons/core-free-icons";
 
@@ -11,6 +12,7 @@ import type { Earthquake, GBIFSpecies, WikimediaPhoto } from "@/lib/enrichment";
 import type { SituationTrait } from "@/lib/priorities";
 
 export default function Index() {
+  const { toast } = useToast();
   const [center, setCenter] = useState<[number, number]>([2.3522, 48.8566]);
   const [zoom] = useState(6);
   const [mapZoom, setMapZoom] = useState(6);
@@ -44,10 +46,15 @@ export default function Index() {
       setDrawerOpen(true);
     } catch (e) {
       console.error("Weather fetch failed:", e);
+      toast({
+        title: "Impossible de charger les données",
+        description: "Le service météo est temporairement indisponible ou vous êtes hors ligne.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   const handleSearchSelect = (result: GeoResult) => {
     loadWeather(result.lat, result.lon, result.name);
