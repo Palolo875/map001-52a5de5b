@@ -1,20 +1,18 @@
-
 // ─── Situational Intelligence Engine (SIS) ──────────────────────────
-// Detects contextual traits from location data and calculates
-// module display priority for the ExploreTab.
+// Atlas V2 introduces a richer context model:
+//   - Macro domain: broad environmental context
+//   - Archetype: more precise sub-context
+//   - Signals: dynamic modifiers that affect ranking and UI behavior
 //
-// Design principles:
-//   - Multiple signals must converge before activating a strong trait
-//   - No single heuristic should dominate (altitude alone ≠ WILD)
-//   - User intent is inferred, never assumed
-//   - The default state is always "discovery" (neutral exploration)
+// The current UI still consumes legacy SituationTrait values, so this
+// module exposes a richer profile while keeping backward compatibility.
 
-export type SituationTrait = 
-  | "VITAL" 
-  | "ATLAS" 
-  | "WILD" 
-  | "URBAN" 
-  | "CULTURAL" 
+export type SituationTrait =
+  | "VITAL"
+  | "ATLAS"
+  | "WILD"
+  | "URBAN"
+  | "CULTURAL"
   | "TRANSIT"
   | "MARITIME"
   | "ISOLATED"
@@ -22,139 +20,46 @@ export type SituationTrait =
   | "HOSTILE"
   | "FOREIGN";
 
+export type MacroDomain =
+  | "NATURE"
+  | "URBAN"
+  | "MARITIME"
+  | "CULTURAL"
+  | "TRANSIT"
+  | "ISOLATED";
+
+export type Archetype =
+  | "SAVANNAH"
+  | "DESERT"
+  | "JUNGLE"
+  | "ALPINE"
+  | "FOREST"
+  | "COASTAL"
+  | "OPEN_OCEAN"
+  | "HISTORIC_CORE"
+  | "MUSEUM_DISTRICT"
+  | "CIVIC_CENTER"
+  | "AIRPORT_HUB"
+  | "STATION_DISTRICT"
+  | "REMOTE_FRONTIER";
+
+export type SituationalSignal =
+  | "EMERGENCY_SERVICES"
+  | "EXTREME_WEATHER"
+  | "HIGH_BIODIVERSITY"
+  | "NIGHT_TIME"
+  | "HISTORICAL_SIGNIFICANCE"
+  | "HIGH_ALTITUDE"
+  | "LOW_DENSITY"
+  | "COASTAL_ACCESS"
+  | "TRANSIT_PRESSURE"
+  | "FOREIGN_CONTEXT"
+  | "MACRO_VIEW";
+
 export interface ModulePriority {
   id: string;
   weight: number;
 }
-
-// ─── Module IDs ─────────────────────────────────────────────────────
-// These correspond to the visual blocks rendered in ExploreTab.
-export type ModuleId = 
-  | "narrative"    // NarrativeHub — contextual signals (weather, alerts)
-  | "story"        // StoryCarousel — visual storytelling
-  | "photos"       // Wikimedia Commons photo grid
-  | "country"      // Country identity card (flag, currency, language)
-  | "pois"         // Nearby points of interest list
-  | "navigation"   // Deep links to Google/Apple Maps
-  | "events_brief" // NASA EONET natural events
-  | "quakes_brief" // Compact seismic summary (replaces full Quakes tab)
-  | "nature_brief" // Compact biodiversity summary (replaces full Nature tab)
-  | "wiki_brief"   // Wikipedia excerpt inline
-  | "isolated_brief"; // Graceful empty state for oceans/deserts
-
-// ─── Weight Modifiers Matrix ─────────────────────────────────────────
-// Instead of complex if/else chains, we define how each trait modifies
-// the base weight of each module. 
-// Null/undefined means no modification.
-const TRAIT_MODIFIERS: Record<SituationTrait, Partial<Record<ModuleId, number>>> = {
-  VITAL: {
-    pois: +200,         // Hospitals/police → top
-    navigation: +180,   // "Get me there NOW"
-    narrative: +50,     // Alert signals stay high
-    story: -60,         // Entertainment drops
-    photos: -40,
-    wiki_brief: -30,
-    nature_brief: -50
-  },
-  ATLAS: {
-    country: +120,      // Country card → top
-    wiki_brief: +40,    // Cultural context rises
-    story: +20,
-    pois: -30,          // Local POIs less meaningful at country scale
-    nature_brief: -10
-  },
-  WILD: {
-    narrative: +60,     // Weather/UV/altitude warnings → critical
-    nature_brief: +80,  // Biodiversity is the star
-    photos: +30,        // Landscape photos
-    pois: -20,          // Few POIs in wild areas anyway
-    country: -20
-  },
-  URBAN: {
-    pois: +60,          // Services are what matters
-    narrative: +30,     // Air quality, comfort
-    navigation: +20,    // Transit links
-    quakes_brief: -10,
-    nature_brief: -10
-  },
-  CULTURAL: {
-    wiki_brief: +80,    // Wikipedia content is king
-    photos: +50,        // Historical photos
-    story: +30          // Rich storytelling
-  },
-  TRANSIT: {
-    pois: +100,         // Nearby stations/stops
-    navigation: +70,    // Route planning
-    story: -30,
-    nature_brief: -30
-  },
-  MARITIME: {
-    narrative: +50,     // Wave/wind signals
-    nature_brief: +40,  // Marine biodiversity
-    pois: -20           // Few POIs at sea
-  },
-  ISOLATED: {
-    isolated_brief: +200, // Tops the list just under narrative
-    navigation: +20
-  },
-  NOCTURNE: {
-    pois: +40,          // Hotels/Nightlife
-    photos: -30,        // Visuals less relevant at night
-    nature_brief: -20,
-    wiki_brief: -20
-  },
-  HOSTILE: {
-    narrative: +300,    // SURVIVAL MODE: Weather/Alerts must be at the very top
-    events_brief: +150, // NASA/FEMA alerts
-    pois: +100,         // Emergency services
-    story: -100,        // Hide entertainment
-    photos: -100,       // Hide visuals
-    wiki_brief: -100    // Hide culture
-  },
-  FOREIGN: {
-    country: +150,      // Language, Currency, Timezone are crucial
-    wiki_brief: +20     // Context is helpful
-  }
-};
-
-// ─── Weight Calculator ──────────────────────────────────────────────
-// Higher weight = appears higher in the Explore tab.
-// Base weights define the default "discovery" order.
-
-export function calculateModuleWeights(traits: Set<SituationTrait>): ModulePriority[] {
-  const modules: ModulePriority[] = [
-    { id: "narrative",    weight: 100 },  // Signals always first by default
-    { id: "story",        weight: 85 },   // Visual discovery hook
-    { id: "photos",       weight: 70 },   // Visual context
-    { id: "wiki_brief",   weight: 55 },   // Cultural knowledge
-    { id: "country",      weight: 45 },   // Country identity
-    { id: "events_brief", weight: 40 },   // Natural events
-    { id: "pois",         weight: 35 },   // Nearby places
-    { id: "nature_brief", weight: 25 },   // Biodiversity
-    { id: "quakes_brief", weight: 15 },   // Seismic activity
-    { id: "navigation",   weight: 10 },   // External nav links
-    { id: "isolated_brief", weight: 5 },  // Empty state fallback
-  ];
-
-  return modules.map(m => {
-    let w = m.weight;
-
-    // Apply modifiers from active traits
-    traits.forEach(trait => {
-      const modifiers = TRAIT_MODIFIERS[trait];
-      if (modifiers && m.id in modifiers) {
-        w += modifiers[m.id as ModuleId] || 0;
-      }
-    });
-
-    return { ...m, weight: w };
-  }).sort((a, b) => b.weight - a.weight);
-}
-
-
-// ─── Situation Detection ────────────────────────────────────────────
-// Each trait requires MULTIPLE converging signals to activate.
-// This prevents false positives (e.g. clicking a hospital out of curiosity).
 
 export interface DetectionContext {
   locationName: string;
@@ -162,150 +67,576 @@ export interface DetectionContext {
   pois: any[];
   quakes: any[];
   wiki: any;
-  zoomLevel?: number;    // Map zoom: z5=country, z14=neighborhood
-  poiCount?: number;     // Total POIs in radius (density proxy)
+  species?: any[];
+  zoomLevel?: number;
+  poiCount?: number;
 }
 
-export function detectSituations(ctx: DetectionContext): Set<SituationTrait> {
-  const traits = new Set<SituationTrait>();
-  const name = (ctx.locationName || "").toLowerCase();
-  const poiCount = ctx.poiCount ?? ctx.pois?.length ?? 0;
-  const elevation = ctx.weather?.elevation ?? 0;
-  const zoom = ctx.zoomLevel ?? 12; // Default to neighborhood level
+export interface SituationReason {
+  code: string;
+  message: string;
+  weight: number;
+}
 
-  // ── 0. ISOLATED ──────────────────────────────────────────────────
-  // No POIs and no cultural info
-  if (poiCount === 0 && !ctx.wiki && !name.includes(",")) {
-    traits.add("ISOLATED");
+export interface ScoredValue<T extends string> {
+  value: T;
+  confidence: number;
+  reasons: SituationReason[];
+}
+
+export interface SituationProfile {
+  domain: ScoredValue<MacroDomain> | null;
+  archetype: ScoredValue<Archetype> | null;
+  signals: Array<ScoredValue<SituationalSignal>>;
+  traits: Set<SituationTrait>;
+  moduleWeights: ModulePriority[];
+}
+
+export type ModuleId =
+  | "narrative"
+  | "story"
+  | "photos"
+  | "country"
+  | "pois"
+  | "navigation"
+  | "events_brief"
+  | "quakes_brief"
+  | "nature_brief"
+  | "wiki_brief"
+  | "isolated_brief";
+
+const TRAIT_MODIFIERS: Record<SituationTrait, Partial<Record<ModuleId, number>>> = {
+  VITAL: {
+    pois: +200,
+    navigation: +180,
+    narrative: +50,
+    story: -60,
+    photos: -40,
+    wiki_brief: -30,
+    nature_brief: -50,
+  },
+  ATLAS: {
+    country: +120,
+    wiki_brief: +40,
+    story: +20,
+    pois: -30,
+    nature_brief: -10,
+  },
+  WILD: {
+    narrative: +60,
+    nature_brief: +80,
+    photos: +30,
+    pois: -20,
+    country: -20,
+  },
+  URBAN: {
+    pois: +60,
+    narrative: +30,
+    navigation: +20,
+    quakes_brief: -10,
+    nature_brief: -10,
+  },
+  CULTURAL: {
+    wiki_brief: +80,
+    photos: +50,
+    story: +30,
+  },
+  TRANSIT: {
+    pois: +100,
+    navigation: +70,
+    story: -30,
+    nature_brief: -30,
+  },
+  MARITIME: {
+    narrative: +50,
+    nature_brief: +40,
+    pois: -20,
+  },
+  ISOLATED: {
+    isolated_brief: +200,
+    navigation: +20,
+  },
+  NOCTURNE: {
+    pois: +40,
+    photos: -30,
+    nature_brief: -20,
+    wiki_brief: -20,
+  },
+  HOSTILE: {
+    narrative: +300,
+    events_brief: +150,
+    pois: +100,
+    story: -100,
+    photos: -100,
+    wiki_brief: -100,
+  },
+  FOREIGN: {
+    country: +150,
+    wiki_brief: +20,
+  },
+};
+
+type SignalAccumulator = Record<SituationalSignal, SituationReason[]>;
+type DomainAccumulator = Record<MacroDomain, SituationReason[]>;
+type ArchetypeAccumulator = Record<Archetype, SituationReason[]>;
+
+const SITUATIONAL_SIGNALS: SituationalSignal[] = [
+  "EMERGENCY_SERVICES",
+  "EXTREME_WEATHER",
+  "HIGH_BIODIVERSITY",
+  "NIGHT_TIME",
+  "HISTORICAL_SIGNIFICANCE",
+  "HIGH_ALTITUDE",
+  "LOW_DENSITY",
+  "COASTAL_ACCESS",
+  "TRANSIT_PRESSURE",
+  "FOREIGN_CONTEXT",
+  "MACRO_VIEW",
+];
+
+const MACRO_DOMAINS: MacroDomain[] = [
+  "NATURE",
+  "URBAN",
+  "MARITIME",
+  "CULTURAL",
+  "TRANSIT",
+  "ISOLATED",
+];
+
+const ARCHETYPES: Archetype[] = [
+  "SAVANNAH",
+  "DESERT",
+  "JUNGLE",
+  "ALPINE",
+  "FOREST",
+  "COASTAL",
+  "OPEN_OCEAN",
+  "HISTORIC_CORE",
+  "MUSEUM_DISTRICT",
+  "CIVIC_CENTER",
+  "AIRPORT_HUB",
+  "STATION_DISTRICT",
+  "REMOTE_FRONTIER",
+];
+
+function createAccumulator<T extends string>(keys: readonly T[]): Record<T, SituationReason[]> {
+  return keys.reduce((acc, key) => {
+    acc[key] = [];
+    return acc;
+  }, {} as Record<T, SituationReason[]>);
+}
+
+function addReason<T extends string>(
+  acc: Record<T, SituationReason[]>,
+  key: T,
+  code: string,
+  message: string,
+  weight: number
+) {
+  acc[key].push({ code, message, weight });
+}
+
+function totalWeight(reasons: SituationReason[]): number {
+  return reasons.reduce((sum, reason) => sum + reason.weight, 0);
+}
+
+function clampConfidence(score: number, threshold: number, ceiling = threshold + 6): number {
+  if (score <= 0) return 0;
+  if (score <= threshold) return Math.max(0.15, score / threshold * 0.6);
+  const ratio = Math.min(1, (score - threshold) / Math.max(1, ceiling - threshold));
+  return Math.min(0.98, 0.6 + ratio * 0.38);
+}
+
+function selectTopScored<T extends string>(
+  acc: Record<T, SituationReason[]>,
+  threshold: number
+): ScoredValue<T> | null {
+  const ranked = Object.entries(acc)
+    .map(([value, reasons]) => ({
+      value: value as T,
+      reasons,
+      score: totalWeight(reasons),
+    }))
+    .filter((item) => item.score >= threshold)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked.length === 0) return null;
+
+  const top = ranked[0];
+  return {
+    value: top.value,
+    confidence: clampConfidence(top.score, threshold),
+    reasons: top.reasons,
+  };
+}
+
+function selectSignals(
+  acc: SignalAccumulator,
+  threshold: number
+): Array<ScoredValue<SituationalSignal>> {
+  return Object.entries(acc)
+    .map(([value, reasons]) => ({
+      value: value as SituationalSignal,
+      reasons,
+      score: totalWeight(reasons),
+    }))
+    .filter((item) => item.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => ({
+      value: item.value,
+      confidence: clampConfidence(item.score, threshold),
+      reasons: item.reasons,
+    }));
+}
+
+function normalize(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function hasAnyKeyword(haystack: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => haystack.includes(keyword));
+}
+
+function deriveTraits(
+  domain: ScoredValue<MacroDomain> | null,
+  archetype: ScoredValue<Archetype> | null,
+  signals: Array<ScoredValue<SituationalSignal>>,
+  ctx: DetectionContext
+): Set<SituationTrait> {
+  const traits = new Set<SituationTrait>();
+  const signalSet = new Set(signals.map((signal) => signal.value));
+  const elevation = ctx.weather?.elevation ?? 0;
+
+  if (ctx.zoomLevel !== undefined && ctx.zoomLevel <= 9) {
+    traits.add("ATLAS");
   }
 
-  // ── 1. VITAL ─────────────────────────────────────────────────────
-  // Requires: explicit emergency keyword in location name
-  //   OR active major earthquake nearby
-  // Does NOT activate just because there's a hospital in the POI list
-  // (someone browsing near a hospital ≠ someone needing emergency help)
-  
-  const isExplicitEmergencySearch = (
-    name.includes("hôpital") || 
-    name.includes("hospital") ||
-    name.includes("urgences") || 
-    name.includes("emergency") ||
-    name.includes("police") || 
-    name.includes("pompier") ||
-    name.includes("secours") ||
-    name.includes("samu")
-  );
-  
-  const hasMajorQuakeNearby = ctx.quakes?.some(
-    (q: any) => q.magnitude >= 4.5 && q.distance < 50
-  );
-  
-  if (isExplicitEmergencySearch || hasMajorQuakeNearby) {
+  switch (domain?.value) {
+    case "NATURE":
+      traits.add("WILD");
+      break;
+    case "URBAN":
+      traits.add("URBAN");
+      break;
+    case "MARITIME":
+      traits.add("MARITIME");
+      break;
+    case "CULTURAL":
+      traits.add("CULTURAL");
+      break;
+    case "TRANSIT":
+      traits.add("TRANSIT");
+      break;
+    case "ISOLATED":
+      traits.add("ISOLATED");
+      break;
+  }
+
+  if (signalSet.has("EMERGENCY_SERVICES")) {
     traits.add("VITAL");
   }
 
-  // ── 2. ATLAS ─────────────────────────────────────────────────────
-  // Primary trigger: map zoom level (user is looking at macro scale)
-  // Secondary: location name suggests a country/region (no comma = broad)
-  
-  if (zoom <= 7) {
-    // User is zoomed out to country/continent level
-    traits.add("ATLAS");
-  } else if (zoom <= 9 && !name.includes(",") && poiCount < 3) {
-    // Zoomed to region level with no specific place
-    traits.add("ATLAS");
+  if (signalSet.has("NIGHT_TIME")) {
+    traits.add("NOCTURNE");
   }
 
-  // ── 3. WILD ──────────────────────────────────────────────────────
-  // Requires: high altitude AND low POI density
-  //   OR explicit nature keywords in name
-  // This prevents cities at altitude (Mexico City, Denver) from triggering
-  
-  const hasNatureKeyword = (
-    name.includes("parc national") ||
-    name.includes("réserve") ||
-    name.includes("forêt") ||
-    name.includes("sommet") ||
-    name.includes("mont ") ||
-    name.includes("pic ") ||
-    name.includes("col ") ||
-    name.includes("refuge") ||
-    name.includes("sentier") ||
-    name.includes("randonnée")
-  );
-  
-  const isHighAltitudeLowDensity = elevation > 1000 && poiCount < 8;
-  const isVeryHighAltitude = elevation > 2500 && poiCount < 20;
-  
-  if (hasNatureKeyword || isHighAltitudeLowDensity || isVeryHighAltitude) {
-    // Don't mark as WILD if it's clearly urban
-    if (!traits.has("ATLAS")) {
-      traits.add("WILD");
-    }
+  if (signalSet.has("FOREIGN_CONTEXT")) {
+    traits.add("FOREIGN");
   }
 
-  // ── 4. URBAN ─────────────────────────────────────────────────────
-  // Dense POI area OR explicit urban service keywords
-  
-  const urbanKeywords = ["mairie", "bibliothèque", "médiathèque", "préfecture", "poste"];
-  const hasUrbanKeyword = urbanKeywords.some(k => name.includes(k));
-  
-  const urbanPOITypes = ["Restaurant", "Hôtel", "Commerce", "Banque", "Supermarché"];
-  const urbanPOICount = (ctx.pois || []).filter(
-    (p: any) => urbanPOITypes.includes(p.category)
-  ).length;
-  
-  if (urbanPOICount >= 5 || hasUrbanKeyword || (poiCount >= 15 && !traits.has("WILD"))) {
-    traits.add("URBAN");
+  if (signalSet.has("EXTREME_WEATHER")) {
+    traits.add("HOSTILE");
   }
 
-  // ── 5. CULTURAL ──────────────────────────────────────────────────
-  // Museum/monument in name, or rich Wikipedia article
-  
-  const culturalKeywords = ["musée", "museum", "monument", "château", "cathédrale", 
-    "basilique", "temple", "mosquée", "synagogue", "palais", "tour ", "opéra"];
-  const hasCulturalKeyword = culturalKeywords.some(k => name.includes(k));
-  
-  const hasRichWiki = ctx.wiki?.extract && ctx.wiki.extract.length > 500;
-  const wikiMentionsHistory = ctx.wiki?.description?.toLowerCase().includes("histor") ||
-    ctx.wiki?.description?.toLowerCase().includes("monument") ||
-    ctx.wiki?.description?.toLowerCase().includes("patrimoine");
-  
-  if (hasCulturalKeyword || (hasRichWiki && wikiMentionsHistory)) {
+  if (
+    archetype?.value === "HISTORIC_CORE" ||
+    archetype?.value === "MUSEUM_DISTRICT" ||
+    signalSet.has("HISTORICAL_SIGNIFICANCE")
+  ) {
     traits.add("CULTURAL");
   }
 
-  // ── 6. TRANSIT ───────────────────────────────────────────────────
-  // Explicit transport POI or keyword only. NO movement detection.
-  
-  const transitKeywords = ["gare", "aéroport", "airport", "station", "terminal", 
-    "port ", "quai", "métro", "tramway", "arrêt"];
-  const hasTransitKeyword = transitKeywords.some(k => name.includes(k));
-  
-  const hasTransitPOI = ctx.pois?.some(
-    (p: any) => p.category === "Transport" || p.type === "station" || p.type === "aerodrome"
-  );
-  
-  if (hasTransitKeyword || hasTransitPOI) {
-    traits.add("TRANSIT");
-  }
-
-  // ── 7. MARITIME ──────────────────────────────────────────────────
-  // Sea/ocean/coast keywords or very few POIs at low altitude near water
-  
-  const maritimeKeywords = ["mer ", "océan", "ocean", "plage", "port ", "marina", 
-    "phare", "côte", "littoral", "baie"];
-  const hasMaritimeKeyword = maritimeKeywords.some(k => name.includes(k));
-  
-  if (hasMaritimeKeyword) {
-    traits.add("MARITIME");
+  if (
+    domain?.value === "NATURE" &&
+    (signalSet.has("HIGH_ALTITUDE") || elevation > 2000 || archetype?.value === "ALPINE")
+  ) {
+    traits.add("WILD");
   }
 
   return traits;
 }
 
-// ── Legacy wrapper for backward compatibility ───────────────────────
-// (used by LocationDrawer until we migrate all callers to DetectionContext)
+function scoreSignals(ctx: DetectionContext): SignalAccumulator {
+  const signals = createAccumulator(SITUATIONAL_SIGNALS);
+  const name = normalize(ctx.locationName || "");
+  const poiCount = ctx.poiCount ?? ctx.pois?.length ?? 0;
+  const current = ctx.weather?.current;
+  const wikiExtract = normalize(ctx.wiki?.extract || "");
+  const wikiDescription = normalize(ctx.wiki?.description || "");
+
+  const emergencyKeywords = [
+    "hopital",
+    "hospital",
+    "urgences",
+    "emergency",
+    "police",
+    "pompier",
+    "secours",
+    "samu",
+  ];
+  if (hasAnyKeyword(name, emergencyKeywords)) {
+    addReason(signals, "EMERGENCY_SERVICES", "name:emergency", "Le nom du lieu evoque un service d'urgence.", 4);
+  }
+  if (ctx.quakes?.some((quake: any) => quake.magnitude >= 4.5 && quake.distance < 50)) {
+    addReason(signals, "EMERGENCY_SERVICES", "quakes:major-nearby", "Un seisme significatif est detecte a proximite.", 3);
+  }
+
+  const isExtremeWeather =
+    (current?.windGusts ?? 0) >= 70 ||
+    (current?.precipitation ?? 0) >= 15 ||
+    (current?.uvIndex ?? 0) >= 9 ||
+    [95, 96, 99].includes(current?.weatherCode);
+  if (isExtremeWeather) {
+    addReason(signals, "EXTREME_WEATHER", "weather:severe", "Les conditions meteo sont potentiellement hostiles.", 4);
+  }
+
+  const speciesCount = Array.isArray(ctx.species) ? ctx.species.length : 0;
+  if (speciesCount >= 12) {
+    addReason(signals, "HIGH_BIODIVERSITY", "nature:species-density", "La densite d'especes connues est elevee.", 3);
+  }
+  if (hasAnyKeyword(wikiExtract, ["ecosysteme", "biodiversite", "reserve naturelle", "faune", "corail"])) {
+    addReason(signals, "HIGH_BIODIVERSITY", "wiki:biodiversity", "Le texte encyclopedique confirme un contexte biodiversite.", 2);
+  }
+
+  if (current?.isDay === false) {
+    addReason(signals, "NIGHT_TIME", "weather:night", "Le lieu est actuellement dans sa phase nocturne.", 3);
+  }
+
+  if (hasAnyKeyword(name, ["musee", "museum", "monument", "chateau", "cathedrale", "palais", "opera"])) {
+    addReason(signals, "HISTORICAL_SIGNIFICANCE", "name:cultural", "Le nom du lieu indique un site culturel ou patrimonial.", 4);
+  }
+  if (hasAnyKeyword(wikiDescription, ["histor", "monument", "patrimoine"])) {
+    addReason(signals, "HISTORICAL_SIGNIFICANCE", "wiki:historical", "La description Wikipedia indique une forte valeur historique.", 3);
+  }
+
+  if ((ctx.weather?.elevation ?? 0) >= 1200) {
+    addReason(signals, "HIGH_ALTITUDE", "terrain:elevation", "L'altitude du lieu est elevee.", 3);
+  }
+
+  if (poiCount <= 3) {
+    addReason(signals, "LOW_DENSITY", "poi:scarce", "Le nombre de POI detectes est tres faible.", 3);
+  }
+
+  if (hasAnyKeyword(name, ["plage", "marina", "littoral", "cote", "baie", "ocean", "ocean ", "mer "])) {
+    addReason(signals, "COASTAL_ACCESS", "name:coast", "Le nom du lieu evoque un environnement cotier ou marin.", 4);
+  }
+
+  const transitPoiCount = (ctx.pois || []).filter(
+    (poi: any) => poi.category === "Transport" || poi.type === "station" || poi.type === "aerodrome"
+  ).length;
+  if (transitPoiCount >= 2) {
+    addReason(signals, "TRANSIT_PRESSURE", "poi:transit-density", "La densite d'equipements de transport est elevee.", 3);
+  }
+  if (hasAnyKeyword(name, ["gare", "aeroport", "airport", "station", "terminal", "metro", "tramway", "quai"])) {
+    addReason(signals, "TRANSIT_PRESSURE", "name:transit", "Le nom du lieu indique un noeud de transport.", 4);
+  }
+
+  if (ctx.zoomLevel !== undefined && ctx.zoomLevel <= 7) {
+    addReason(signals, "MACRO_VIEW", "zoom:macro", "La carte est observee a une echelle macro.", 4);
+  } else if (ctx.zoomLevel !== undefined && ctx.zoomLevel <= 9 && !name.includes(",") && poiCount < 3) {
+    addReason(signals, "MACRO_VIEW", "zoom:regional", "La vue correspond davantage a une region qu'a un lieu precis.", 3);
+  }
+
+  if (ctx.wiki?.facts?.population && ctx.wiki.facts.population > 1_000_000 && poiCount < 5) {
+    addReason(signals, "FOREIGN_CONTEXT", "wiki:country-scale", "Le contexte semble large et peu localise.", 2);
+  }
+
+  return signals;
+}
+
+function scoreDomains(ctx: DetectionContext, signals: SignalAccumulator): DomainAccumulator {
+  const domains = createAccumulator(MACRO_DOMAINS);
+  const name = normalize(ctx.locationName || "");
+  const poiCount = ctx.poiCount ?? ctx.pois?.length ?? 0;
+  const wikiExtract = normalize(ctx.wiki?.extract || "");
+  const elevation = ctx.weather?.elevation ?? 0;
+
+  if (totalWeight(signals.LOW_DENSITY) > 0 && !ctx.wiki && !name.includes(",")) {
+    addReason(domains, "ISOLATED", "context:no-anchor", "Le lieu semble sans ancrage urbain ni culturel.", 4);
+  }
+  if (poiCount === 0) {
+    addReason(domains, "ISOLATED", "poi:none", "Aucun POI n'a ete detecte dans le rayon courant.", 3);
+  }
+
+  if (hasAnyKeyword(name, ["parc national", "reserve", "foret", "sommet", "mont ", "pic ", "col ", "refuge", "sentier", "randonnee"])) {
+    addReason(domains, "NATURE", "name:nature", "Le nom du lieu correspond a un environnement naturel.", 4);
+  }
+  if (totalWeight(signals.HIGH_ALTITUDE) > 0) {
+    addReason(domains, "NATURE", "signal:altitude", "L'altitude elevee renforce le contexte naturel.", 2);
+  }
+  if (totalWeight(signals.HIGH_BIODIVERSITY) > 0) {
+    addReason(domains, "NATURE", "signal:biodiversity", "La biodiversite renforce le domaine nature.", 3);
+  }
+  if (elevation > 2500 && poiCount < 20) {
+    addReason(domains, "NATURE", "terrain:very-high", "Le terrain est tres eleve et peu dense.", 3);
+  }
+
+  const urbanPoiCount = (ctx.pois || []).filter((poi: any) =>
+    ["Restaurant", "Hotel", "Hôtel", "Commerce", "Banque", "Supermarche", "Supermarché"].includes(poi.category)
+  ).length;
+  if (urbanPoiCount >= 5) {
+    addReason(domains, "URBAN", "poi:urban-density", "La densite de services urbains est forte.", 4);
+  }
+  if (poiCount >= 15 && elevation < 1500) {
+    addReason(domains, "URBAN", "poi:overall-density", "Le nombre total de POI suggere un tissu urbain.", 3);
+  }
+  if (hasAnyKeyword(name, ["mairie", "bibliotheque", "mediatheque", "prefecture", "poste"])) {
+    addReason(domains, "URBAN", "name:civic", "Le lieu semble etre un equipement civique urbain.", 3);
+  }
+
+  if (totalWeight(signals.COASTAL_ACCESS) > 0) {
+    addReason(domains, "MARITIME", "signal:coastal", "Les signaux cotiers orientent vers le maritime.", 4);
+  }
+  if (hasAnyKeyword(wikiExtract, ["ocean", "mer", "coti", "port", "maritime", "recif", "corail"])) {
+    addReason(domains, "MARITIME", "wiki:maritime", "Le contexte encyclopedique confirme une dimension maritime.", 2);
+  }
+
+  if (totalWeight(signals.HISTORICAL_SIGNIFICANCE) > 0) {
+    addReason(domains, "CULTURAL", "signal:historical", "Le lieu porte un fort signal culturel ou patrimonial.", 4);
+  }
+  if (ctx.wiki?.extract && ctx.wiki.extract.length > 500) {
+    addReason(domains, "CULTURAL", "wiki:rich", "Le contenu encyclopedique est suffisamment riche pour justifier un domaine culturel.", 2);
+  }
+
+  if (totalWeight(signals.TRANSIT_PRESSURE) > 0) {
+    addReason(domains, "TRANSIT", "signal:transit", "Le lieu se comporte comme un noeud de mobilite.", 4);
+  }
+
+  return domains;
+}
+
+function scoreArchetypes(
+  ctx: DetectionContext,
+  domain: ScoredValue<MacroDomain> | null,
+  signals: SignalAccumulator
+): ArchetypeAccumulator {
+  const archetypes = createAccumulator(ARCHETYPES);
+  const name = normalize(ctx.locationName || "");
+  const wikiExtract = normalize(ctx.wiki?.extract || "");
+  const elevation = ctx.weather?.elevation ?? 0;
+  const poiCount = ctx.poiCount ?? ctx.pois?.length ?? 0;
+
+  if (domain?.value === "NATURE") {
+    if (elevation >= 2000 || hasAnyKeyword(name, ["sommet", "mont ", "pic ", "alpes", "glacier"])) {
+      addReason(archetypes, "ALPINE", "terrain:alpine", "Le relief correspond a un contexte alpin.", 4);
+    }
+    if (hasAnyKeyword(name, ["desert", "dune", "erg"])) {
+      addReason(archetypes, "DESERT", "name:desert", "Le nom indique un biotope desertique.", 4);
+    }
+    if (hasAnyKeyword(name, ["foret", "forest", "bois"])) {
+      addReason(archetypes, "FOREST", "name:forest", "Le nom indique un couvert forestier.", 4);
+    }
+    if (hasAnyKeyword(wikiExtract, ["savane", "savannah"])) {
+      addReason(archetypes, "SAVANNAH", "wiki:savannah", "Le texte mentionne un biome de savane.", 4);
+    }
+    if (hasAnyKeyword(wikiExtract, ["jungle", "foret tropicale", "rainforest"])) {
+      addReason(archetypes, "JUNGLE", "wiki:jungle", "Le texte mentionne un biome tropical dense.", 4);
+    }
+  }
+
+  if (domain?.value === "MARITIME") {
+    if (poiCount === 0 && !ctx.wiki) {
+      addReason(archetypes, "OPEN_OCEAN", "context:open-ocean", "Le contexte ressemble a une zone maritime ouverte.", 4);
+    } else {
+      addReason(archetypes, "COASTAL", "context:coastal", "Le lieu semble accessible depuis le littoral.", 3);
+    }
+  }
+
+  if (domain?.value === "CULTURAL") {
+    if (hasAnyKeyword(name, ["musee", "museum"])) {
+      addReason(archetypes, "MUSEUM_DISTRICT", "name:museum", "Le lieu est associe a une fonction museale.", 4);
+    }
+    if (hasAnyKeyword(name, ["cathedrale", "chateau", "monument", "palais", "vieille ville"])) {
+      addReason(archetypes, "HISTORIC_CORE", "name:historic", "Le lieu evoque un coeur historique.", 4);
+    }
+  }
+
+  if (domain?.value === "URBAN") {
+    if (hasAnyKeyword(name, ["mairie", "prefecture", "hotel de ville"])) {
+      addReason(archetypes, "CIVIC_CENTER", "name:civic-center", "Le lieu semble faire partie d'un centre civique.", 4);
+    }
+  }
+
+  if (domain?.value === "TRANSIT") {
+    if (hasAnyKeyword(name, ["aeroport", "airport", "terminal"])) {
+      addReason(archetypes, "AIRPORT_HUB", "name:airport", "Le lieu correspond a un hub aeroportuaire.", 4);
+    }
+    if (hasAnyKeyword(name, ["gare", "station", "metro", "tramway", "quai"])) {
+      addReason(archetypes, "STATION_DISTRICT", "name:station", "Le lieu correspond a un pole gare/station.", 4);
+    }
+  }
+
+  if (domain?.value === "ISOLATED" || (totalWeight(signals.LOW_DENSITY) > 0 && elevation > 800)) {
+    addReason(archetypes, "REMOTE_FRONTIER", "context:remote", "Le lieu semble isole et peu equipe.", 3);
+  }
+
+  return archetypes;
+}
+
+export function calculateModuleWeights(traits: Set<SituationTrait>): ModulePriority[] {
+  const modules: ModulePriority[] = [
+    { id: "narrative", weight: 100 },
+    { id: "story", weight: 85 },
+    { id: "photos", weight: 70 },
+    { id: "wiki_brief", weight: 55 },
+    { id: "country", weight: 45 },
+    { id: "events_brief", weight: 40 },
+    { id: "pois", weight: 35 },
+    { id: "nature_brief", weight: 25 },
+    { id: "quakes_brief", weight: 15 },
+    { id: "navigation", weight: 10 },
+    { id: "isolated_brief", weight: 5 },
+  ];
+
+  return modules
+    .map((module) => {
+      let weight = module.weight;
+      traits.forEach((trait) => {
+        const modifiers = TRAIT_MODIFIERS[trait];
+        if (modifiers && module.id in modifiers) {
+          weight += modifiers[module.id as ModuleId] || 0;
+        }
+      });
+      return { ...module, weight };
+    })
+    .sort((a, b) => b.weight - a.weight);
+}
+
+export function analyzeSituation(ctx: DetectionContext): SituationProfile {
+  const signalAcc = scoreSignals(ctx);
+  const domainAcc = scoreDomains(ctx, signalAcc);
+  const domain = selectTopScored(domainAcc, 4);
+  const archetypeAcc = scoreArchetypes(ctx, domain, signalAcc);
+  const archetype = selectTopScored(archetypeAcc, 4);
+  const signals = selectSignals(signalAcc, 3);
+  const traits = deriveTraits(domain, archetype, signals, ctx);
+
+  return {
+    domain,
+    archetype,
+    signals,
+    traits,
+    moduleWeights: calculateModuleWeights(traits),
+  };
+}
+
+export function detectSituations(ctx: DetectionContext): Set<SituationTrait> {
+  return analyzeSituation(ctx).traits;
+}
+
 export function detectSituationsLegacy(
   locationName: string,
   weather: any,

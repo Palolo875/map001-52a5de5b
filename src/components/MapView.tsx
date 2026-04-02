@@ -2,10 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { Earthquake, GBIFSpecies, WikimediaPhoto } from "@/lib/enrichment";
+import type { Earthquake, GBIFSpecies, NearbyPOI, WikimediaPhoto } from "@/lib/enrichment";
 import type { SituationTrait } from "@/lib/priorities";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Layers01Icon, BookOpen01Icon, Alert02Icon, Leaf01Icon, Navigation03Icon, ViewIcon } from "@hugeicons/core-free-icons";
+
+export interface MapPreviewItem {
+  id: string;
+  kind: "category" | "landmark";
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  coordinates: [number, number];
+}
 
 interface MapViewProps {
   center: [number, number]; // [lon, lat]
@@ -19,6 +28,12 @@ interface MapViewProps {
   naturalEventsData?: any[];
   traits?: Set<SituationTrait>;
   landmarks?: WikimediaPhoto[];
+  categoryResults?: NearbyPOI[];
+  selectedCategoryResult?: NearbyPOI | null;
+  onCategoryResultClick?: (poi: NearbyPOI) => void;
+  onLayerChange?: (layer: "none" | "quakes" | "nature" | "risks") => void;
+  previewItem?: MapPreviewItem | null;
+  onPreviewSelect?: (preview: MapPreviewItem | null) => void;
 }
 
 const MAP_STYLES = {
@@ -65,11 +80,30 @@ const MAP_STYLES = {
 
 type StyleKey = keyof typeof MAP_STYLES;
 
-export default function MapView({ center, zoom, onMapClick, onZoomChange, markerPosition, activeLayer = "none", quakesData = [], natureData = [], naturalEventsData = [], traits, landmarks = [] }: MapViewProps) {
+export default function MapView({
+  center,
+  zoom,
+  onMapClick,
+  onZoomChange,
+  markerPosition,
+  activeLayer = "none",
+  quakesData = [],
+  natureData = [],
+  naturalEventsData = [],
+  traits,
+  landmarks = [],
+  categoryResults = [],
+  selectedCategoryResult = null,
+  onCategoryResultClick,
+  onLayerChange,
+  previewItem = null,
+  onPreviewSelect,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const landmarksRef = useRef<maplibregl.Marker[]>([]);
+  const categoryMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [currentStyle, setCurrentStyle] = useState<StyleKey>("plan");
   const [show3D, setShow3D] = useState(true);
   const quakesDataRef = useRef(quakesData);
@@ -325,9 +359,165 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
     }
   }, [markerPosition]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    landmarksRef.current.forEach((marker) => marker.remove());
+    landmarksRef.current = [];
+
+    if (!landmarks.length) return;
+
+    landmarksRef.current = landmarks.slice(0, 6).map((landmark, index) => {
+      const isSelected = previewItem?.kind === "landmark" && previewItem.id === `landmark-${index}`;
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "atlas-landmark-marker";
+      element.setAttribute("aria-label", landmark.title);
+      element.style.width = isSelected ? "56px" : "48px";
+      element.style.height = isSelected ? "56px" : "48px";
+      element.style.borderRadius = "999px";
+      element.style.overflow = "hidden";
+      element.style.border = isSelected ? "2px solid rgba(255,255,255,0.96)" : "2px solid rgba(255,255,255,0.82)";
+      element.style.boxShadow = isSelected
+        ? "0 16px 36px rgba(15,23,42,0.34)"
+        : "0 10px 24px rgba(15,23,42,0.2)";
+      element.style.background = "#ffffff";
+      element.style.cursor = "pointer";
+      element.innerHTML = landmark.thumbUrl
+        ? `<img src="${landmark.thumbUrl}" alt="${landmark.title}" style="width:100%;height:100%;object-fit:cover;" />`
+        : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:18px;">📍</span>`;
+
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onPreviewSelect?.({
+          id: `landmark-${index}`,
+          kind: "landmark",
+          title: landmark.title,
+          subtitle: "Repère visuel",
+          imageUrl: landmark.thumbUrl,
+          coordinates: [landmark.lon, landmark.lat],
+        });
+      });
+
+      return new maplibregl.Marker({ element, anchor: "center" })
+        .setLngLat([landmark.lon, landmark.lat])
+        .addTo(map);
+    });
+  }, [landmarks, previewItem, onPreviewSelect]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    categoryMarkersRef.current.forEach((marker) => marker.remove());
+    categoryMarkersRef.current = [];
+
+    if (!categoryResults.length) return;
+
+    categoryMarkersRef.current = categoryResults.map((poi) => {
+      const isSelected =
+        selectedCategoryResult &&
+        selectedCategoryResult.lat === poi.lat &&
+        selectedCategoryResult.lon === poi.lon &&
+        selectedCategoryResult.name === poi.name;
+
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "atlas-category-marker";
+      element.setAttribute("aria-label", poi.name);
+      element.innerHTML = `<span>${getCategoryMarkerGlyph(poi.category)}</span>`;
+      element.style.width = isSelected ? "46px" : "38px";
+      element.style.height = isSelected ? "46px" : "38px";
+      element.style.borderRadius = "999px";
+      element.style.border = isSelected ? "2px solid rgba(255,255,255,0.95)" : "1px solid rgba(255,255,255,0.9)";
+      element.style.background = isSelected ? "#111827" : "rgba(17,24,39,0.82)";
+      element.style.color = "#ffffff";
+      element.style.boxShadow = isSelected
+        ? "0 14px 30px rgba(15,23,42,0.28)"
+        : "0 8px 20px rgba(15,23,42,0.18)";
+      element.style.backdropFilter = "blur(6px)";
+      element.style.cursor = "pointer";
+      element.style.fontSize = isSelected ? "18px" : "15px";
+      element.style.display = "flex";
+      element.style.alignItems = "center";
+      element.style.justifyContent = "center";
+      element.style.transition = "all 180ms ease";
+
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onPreviewSelect?.({
+          id: `category-${poi.lat}-${poi.lon}-${poi.name}`,
+          kind: "category",
+          title: poi.name,
+          subtitle: poi.category,
+          coordinates: [poi.lon, poi.lat],
+        });
+        onCategoryResultClick?.(poi);
+      });
+
+      return new maplibregl.Marker({ element })
+        .setLngLat([poi.lon, poi.lat])
+        .addTo(map);
+    });
+  }, [categoryResults, selectedCategoryResult, onCategoryResultClick, onPreviewSelect]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !previewItem) return;
+
+    map.flyTo({
+      center: previewItem.coordinates,
+      zoom: Math.max(map.getZoom(), 14),
+      speed: 1.1,
+      curve: 1.15,
+      essential: true,
+    });
+  }, [previewItem]);
+
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
+
+      {previewItem && (
+        <button
+          type="button"
+          onClick={() => {
+            if (previewItem.kind === "category") {
+              const poi = categoryResults.find(
+                (item) =>
+                  `category-${item.lat}-${item.lon}-${item.name}` === previewItem.id
+              );
+              if (poi) onCategoryResultClick?.(poi);
+            }
+          }}
+          className="absolute left-4 bottom-6 z-20 w-[min(320px,calc(100%-2rem))] rounded-[1.4rem] border border-white/40 bg-card/92 shadow-lifted backdrop-blur-md overflow-hidden text-left"
+        >
+          <div className="flex items-stretch">
+            <div className="w-24 shrink-0 bg-muted/30">
+              {previewItem.imageUrl ? (
+                <img src={previewItem.imageUrl} alt={previewItem.title} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center text-2xl">
+                  {previewItem.kind === "landmark" ? "🖼️" : "📍"}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 px-3 py-3">
+              <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                {previewItem.kind === "landmark" ? "Landmark" : "Sélection"}
+              </p>
+              <p className="mt-1 truncate font-serif text-base text-foreground">{previewItem.title}</p>
+              {previewItem.subtitle && (
+                <p className="mt-1 text-xs text-muted-foreground">{previewItem.subtitle}</p>
+              )}
+              <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/60">
+                {previewItem.kind === "category" ? "Ouvrir le détail" : "Repère visuel"}
+              </p>
+            </div>
+          </div>
+        </button>
+      )}
       
       {/* Layer Selector */}
       <div className="absolute top-20 right-4 z-20">
@@ -365,8 +555,18 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
                 <h3 className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/60 mb-3 px-1">Détails</h3>
                 <div className="grid grid-cols-4 gap-2">
                   <LayerOption icon={ViewIcon} label="3D" active={show3D} onClick={() => setShow3D(!show3D)} />
-                  <LayerOption icon={Alert02Icon} label="Risques" active={activeLayer === "quakes"} onClick={() => {}} />
-                  <LayerOption icon={Leaf01Icon} label="Nature" active={activeLayer === "nature"} onClick={() => {}} />
+                  <LayerOption
+                    icon={Alert02Icon}
+                    label="Risques"
+                    active={activeLayer === "quakes" || activeLayer === "risks"}
+                    onClick={() => onLayerChange?.(activeLayer === "quakes" || activeLayer === "risks" ? "none" : "quakes")}
+                  />
+                  <LayerOption
+                    icon={Leaf01Icon}
+                    label="Nature"
+                    active={activeLayer === "nature"}
+                    onClick={() => onLayerChange?.(activeLayer === "nature" ? "none" : "nature")}
+                  />
                   <LayerOption icon={Navigation03Icon} label="Trafic" active={false} onClick={() => {}} />
                 </div>
               </div>
@@ -393,9 +593,36 @@ export default function MapView({ center, zoom, onMapClick, onZoomChange, marker
           background: rgba(25, 25, 30, 0.92) !important;
           border-color: rgba(255,255,255,0.06) !important;
         }
+        .atlas-category-marker span {
+          line-height: 1;
+          transform: translateY(1px);
+        }
+        .atlas-landmark-marker img {
+          display: block;
+        }
       `}</style>
     </div>
   );
+}
+
+function getCategoryMarkerGlyph(category: string) {
+  switch (category) {
+    case "Parc":
+      return "🌲";
+    case "Musée":
+      return "🏛️";
+    case "Restaurant":
+      return "☕";
+    case "Hôtel":
+      return "🛏️";
+    case "Transport":
+      return "🚇";
+    case "Hôpital":
+    case "Pharmacie":
+      return "🆘";
+    default:
+      return "•";
+  }
 }
 
 function LayerOption({ icon, label, active, onClick }: { icon: any; label: string; active: boolean; onClick: () => void }) {

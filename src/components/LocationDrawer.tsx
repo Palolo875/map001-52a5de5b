@@ -11,6 +11,7 @@ import {
   type WikiSummary, type WikimediaPhoto, type CountryInfo,
   type NearbyPOI, type Earthquake, type GBIFSpecies, type NaturalEvent, type BikeStation,
 } from "@/lib/enrichment";
+import { type SearchIntent } from "@/lib/search-intents";
 import NarrativeCard from "./NarrativeCard";
 import HourlyForecast from "./HourlyForecast";
 import DailyForecast from "./DailyForecast";
@@ -23,7 +24,15 @@ import {
   ArrowRight01Icon, Leaf01Icon, Alert02Icon, SparklesIcon, VolumeHighIcon,
   FastWindIcon, DropletIcon, Sun03Icon, Cancel01Icon
 } from "@hugeicons/core-free-icons";
-import { detectSituations, calculateModuleWeights, type SituationTrait } from "@/lib/priorities";
+import {
+  analyzeSituation,
+  calculateModuleWeights,
+  type Archetype,
+  type MacroDomain,
+  type SituationProfile,
+  type SituationTrait,
+  type SituationalSignal,
+} from "@/lib/priorities";
 
 interface LocationDrawerProps {
   open: boolean;
@@ -36,12 +45,37 @@ interface LocationDrawerProps {
   onTraitsChange?: (traits: Set<SituationTrait>) => void;
   onPhotosLoaded?: (photos: WikimediaPhoto[]) => void;
   zoomLevel?: number;
+  categoryIntent?: SearchIntent | null;
+  categoryResults?: NearbyPOI[];
+  categoryLoading?: boolean;
+  onCategoryResultSelect?: (poi: NearbyPOI) => void;
+  selectedCategoryResult?: NearbyPOI | null;
+  onCategoryHighlight?: (poi: NearbyPOI | null) => void;
 }
 
 type TabId = "explore" | "meteo" | "autour";
+type DrawerMode = "category-list" | "location-detail";
 
-export default function LocationDrawer({ open, onOpenChange, weather, locationName, lat, lon, onLayerSelect, onTraitsChange, onPhotosLoaded, zoomLevel }: LocationDrawerProps) {
+export default function LocationDrawer({
+  open,
+  onOpenChange,
+  weather,
+  locationName,
+  lat,
+  lon,
+  onLayerSelect,
+  onTraitsChange,
+  onPhotosLoaded,
+  zoomLevel,
+  categoryIntent,
+  categoryResults = [],
+  categoryLoading = false,
+  onCategoryResultSelect,
+  selectedCategoryResult = null,
+  onCategoryHighlight,
+}: LocationDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabId>("explore");
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>("location-detail");
   const [wiki, setWiki] = useState<WikiSummary | null>(null);
   const [photos, setPhotos] = useState<WikimediaPhoto[]>([]);
   const [country, setCountry] = useState<CountryInfo | null>(null);
@@ -51,7 +85,21 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
   const [naturalEvents, setNaturalEvents] = useState<NaturalEvent[]>([]);
   const [bikeStations, setBikeStations] = useState<BikeStation[]>([]);
   const [enrichLoading, setEnrichLoading] = useState(false);
-  const [traits, setTraits] = useState<Set<SituationTrait>>(new Set());
+
+  const situationProfile = useMemo<SituationProfile>(() => {
+    return analyzeSituation({
+      locationName,
+      weather,
+      pois,
+      quakes,
+      wiki,
+      species,
+      zoomLevel,
+      poiCount: pois.length,
+    });
+  }, [locationName, weather, pois, quakes, wiki, species, zoomLevel]);
+
+  const traits = situationProfile.traits;
 
   const narrative = useMemo(
     () => (weather ? generateNarrative(weather, locationName, traits) : []),
@@ -60,6 +108,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
 
   useEffect(() => {
     if (!open || !lat) return;
+    setDrawerMode("location-detail");
     setEnrichLoading(true);
     setWiki(null);
     setPhotos([]);
@@ -90,30 +139,26 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     fetchINaturalistSpecies(lat, lon).then(s => { if(s.length > 0) setSpecies(prev => { const map = new Map([...prev, ...s].map(x => [x.scientificName, x])); return Array.from(map.values()); }); });
     fetchEONETEvents(lat, lon, 500).then(e => { if(e.length > 0) setNaturalEvents(prev => [...prev, ...e]); });
 
-    // 2. Met à jour les traits (intelligence situationnelle) une fois l'essentiel chargé
+    // 2. Le skeleton se retire une fois le noyau contextuel disponible
     Promise.allSettled([
       fetchWikipediaSummary(lat, lon, locationName),
       fetchNearbyPOIs(lat, lon, 2000),
       fetchEarthquakes(lat, lon, 300, 30),
-    ]).then((results) => {
-      const wp = results[0].status === 'fulfilled' ? results[0].value : null;
-      const cp = results[1].status === 'fulfilled' ? (results[1].value || []) : [];
-      const eq = results[2].status === 'fulfilled' ? (results[2].value || []) : [];
-      
-      const newTraits = detectSituations({
-        locationName,
-        weather,
-        pois: cp,
-        quakes: eq,
-        wiki: wp,
-        zoomLevel,
-        poiCount: cp.length,
-      });
-      setTraits(newTraits);
-      onTraitsChange?.(newTraits);
-      setEnrichLoading(false); // Le Skeleton disparaît ici, mais les données visuelles sont déjà entrain d'apparaître
+    ]).then(() => {
+      setEnrichLoading(false);
     }).catch(() => setEnrichLoading(false));
   }, [open, lat, lon, locationName, weather, zoomLevel]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (categoryIntent) {
+      setDrawerMode("category-list");
+    }
+  }, [open, categoryIntent]);
+
+  useEffect(() => {
+    onTraitsChange?.(traits);
+  }, [onTraitsChange, traits]);
 
   const [isSpeaking, setIsSpeaking] = useState(false);
 
@@ -121,9 +166,9 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     return () => window.speechSynthesis.cancel();
   }, []);
 
-  if (!weather) return null;
+  if (!weather && !categoryIntent) return null;
 
-  const { current } = weather;
+  const current = weather?.current;
 
   const speakAura = () => {
     if (isSpeaking) {
@@ -134,7 +179,7 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
 
     const text = `
       ${locationName}. 
-      Actuellement ${current.temperature} degrés. ${getWeatherDescription(current.weatherCode)}. 
+      ${current ? `Actuellement ${current.temperature} degrés. ${getWeatherDescription(current.weatherCode)}.` : ""}
       ${traits.has("VITAL") ? "C'est une zone avec services et assistance." : ""}
       ${traits.has("WILD") ? "Vous êtes dans un environnement naturel." : ""}
       ${wiki?.extract ? wiki.extract.slice(0, 160) : ""}
@@ -151,17 +196,21 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="h-[92vh] outline-none bg-background">
         {/* Back button for sub-tabs */}
-        {activeTab !== 'explore' && (
+        {(activeTab !== 'explore' || (drawerMode === "location-detail" && categoryIntent)) && (
           <div className="absolute top-4 left-4 z-10">
             <button 
               onClick={() => {
-                setActiveTab('explore');
-                onLayerSelect?.('none');
+                if (drawerMode === "location-detail" && categoryIntent) {
+                  setDrawerMode("category-list");
+                } else {
+                  setActiveTab('explore');
+                  onLayerSelect?.('none');
+                }
               }}
               className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-widest text-foreground bg-card blur-calque px-3 py-2 rounded-2xl border border-border/40 shadow-soft hover:bg-secondary transition-all"
             >
               <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="rotate-180" />
-              Retour
+              {drawerMode === "location-detail" && categoryIntent ? "Retour à la liste" : "Retour"}
             </button>
           </div>
         )}
@@ -170,23 +219,27 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
           <div className="flex items-center justify-between pointer-events-auto">
             <div className="min-w-0">
               <DrawerTitle className="font-serif text-3xl text-foreground truncate tracking-tight">
-                {locationName}
+                {drawerMode === "category-list" && categoryIntent ? categoryIntent.label : locationName}
               </DrawerTitle>
               <div className="flex items-center gap-2 mt-1.5">
-                <p className="text-[10px] font-mono text-muted-foreground/70 bg-muted/50 px-1.5 py-0.5 rounded-lg">
-                  {lat.toFixed(4)}, {lon.toFixed(4)}
-                </p>
-                <button 
-                  onClick={speakAura}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all text-[9px] uppercase tracking-widest font-medium ${
-                    isSpeaking 
-                      ? 'bg-primary border-primary text-primary-foreground animate-soft-pulse' 
-                      : 'bg-card border-border/40 text-muted-foreground hover:bg-secondary'
-                  }`}
-                >
-                  <HugeiconsIcon icon={VolumeHighIcon} size={10} />
-                  {isSpeaking ? "Pause" : "Audio"}
-                </button>
+                {drawerMode === "location-detail" && (
+                  <>
+                    <p className="text-[10px] font-mono text-muted-foreground/70 bg-muted/50 px-1.5 py-0.5 rounded-lg">
+                      {lat.toFixed(4)}, {lon.toFixed(4)}
+                    </p>
+                    <button 
+                      onClick={speakAura}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all text-[9px] uppercase tracking-widest font-medium ${
+                        isSpeaking 
+                          ? 'bg-primary border-primary text-primary-foreground animate-soft-pulse' 
+                          : 'bg-card border-border/40 text-muted-foreground hover:bg-secondary'
+                      }`}
+                    >
+                      <HugeiconsIcon icon={VolumeHighIcon} size={10} />
+                      {isSpeaking ? "Pause" : "Audio"}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <DrawerClose 
@@ -198,14 +251,18 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
           </div>
 
           <p className="text-xs text-muted-foreground mt-1.5 italic">
-            {getWeatherDescription(current.weatherCode)}
-            {country && ` — ${country.subregion || country.region || country.name}`}
+            {drawerMode === "category-list" && categoryIntent
+              ? categoryIntent.emptyStateHint
+              : current
+                ? `${getWeatherDescription(current.weatherCode)}${country ? ` — ${country.subregion || country.region || country.name}` : ""}`
+                : ""}
           </p>
         </DrawerHeader>
 
         {/* ─── Temperature Hero + Perspective side by side ─── */}
-        <div className={`transition-all duration-300 overflow-hidden ${activeTab === 'explore' ? 'opacity-100 max-h-[180px]' : 'opacity-0 max-h-0'}`}>
+        <div className={`transition-all duration-300 overflow-hidden ${drawerMode === 'location-detail' && activeTab === 'explore' ? 'opacity-100 max-h-[180px]' : 'opacity-0 max-h-0'}`}>
           <div className="px-5 pt-4 pb-3">
+            {current && (
             <div className="flex items-start gap-4">
               {/* Left: Temperature */}
               <div className="shrink-0">
@@ -236,11 +293,12 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
                 ))}
               </div>
             </div>
+            )}
           </div>
         </div>
 
         {/* ─── Action Pills ─── */}
-        <div className={`transition-all duration-300 overflow-hidden ${activeTab === 'explore' ? 'opacity-100 max-h-[80px]' : 'opacity-0 max-h-0'}`}>
+        <div className={`transition-all duration-300 overflow-hidden ${drawerMode === 'location-detail' && activeTab === 'explore' ? 'opacity-100 max-h-[80px]' : 'opacity-0 max-h-0'}`}>
           <div className="px-5 pb-3 mt-1">
             <div className="flex gap-2 overflow-x-auto hide-scrollbar snap-x pb-1">
               {traits.has("VITAL") && (
@@ -278,7 +336,19 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
 
         {/* ─── Tab Content ─── */}
         <div className="overflow-y-auto flex-1 overscroll-contain">
-          {activeTab === "explore" && (
+          {drawerMode === "category-list" && categoryIntent ? (
+            <CategoryListView
+              intent={categoryIntent}
+              items={categoryResults}
+              loading={categoryLoading}
+              selectedItem={selectedCategoryResult}
+              onHighlight={onCategoryHighlight}
+              onSelect={(poi) => {
+                setDrawerMode("location-detail");
+                onCategoryResultSelect?.(poi);
+              }}
+            />
+          ) : activeTab === "explore" && weather ? (
             <ExploreTab
               wiki={wiki}
               photos={photos}
@@ -296,13 +366,14 @@ export default function LocationDrawer({ open, onOpenChange, weather, locationNa
               weather={weather}
               narrative={narrative}
               traits={traits}
+              profile={situationProfile}
               onLayerSelect={onLayerSelect}
             />
-          )}
-          {activeTab === "meteo" && (
+          ) : null}
+          {drawerMode === "location-detail" && activeTab === "meteo" && weather && (
             <MeteoTab weather={weather} />
           )}
-          {activeTab === "autour" && (
+          {drawerMode === "location-detail" && activeTab === "autour" && (
             <AutourTab
               pois={pois}
               bikeStations={bikeStations}
@@ -436,7 +507,7 @@ function MeteoTab({ weather }: { weather: WeatherData }) {
 
 // ─── Explorer Tab ────────────────────────────────────────────────────
 function ExploreTab({
-  wiki, photos, country, pois, quakes, species, naturalEvents, bikeStations, lat, lon, locationName, loading, setActiveTab, weather, narrative, traits, onLayerSelect
+  wiki, photos, country, pois, quakes, species, naturalEvents, bikeStations, lat, lon, locationName, loading, setActiveTab, weather, narrative, traits, profile, onLayerSelect
 }: {
   wiki: WikiSummary | null;
   photos: WikimediaPhoto[];
@@ -454,9 +525,11 @@ function ExploreTab({
   weather: WeatherData;
   narrative: any[];
   traits: Set<SituationTrait>;
+  profile: SituationProfile;
   onLayerSelect?: (layer: "none" | "quakes" | "nature", data?: any) => void;
 }) {
   const priorities = useMemo(() => calculateModuleWeights(traits), [traits]);
+  const uiVariant = useMemo(() => buildExploreVariant(profile), [profile]);
 
   if (loading) return (
     <div className="px-5 py-6 space-y-8 animate-pulse">
@@ -493,6 +566,21 @@ function ExploreTab({
 
   return (
     <div className="pb-10">
+      <div className="px-5 pt-4">
+        <SituationContextPanel
+          profile={profile}
+          locationName={locationName}
+          weather={weather}
+          hasWiki={Boolean(wiki)}
+          poiCount={pois.length}
+          speciesCount={species.length}
+        />
+      </div>
+
+      <div className="px-5 pt-3">
+        <ContextActionCard variant={uiVariant} weather={weather} lat={lat} lon={lon} />
+      </div>
+
       {/* ─── Situation Badges ─── */}
       <div className="px-5 pt-3 pb-1 flex flex-wrap gap-1.5">
         {traits.has("VITAL") && (
@@ -537,7 +625,7 @@ function ExploreTab({
         return (
           <div key="narrative" className="px-5 pt-4">
             <div className="flex items-center justify-between mb-2">
-              <SectionTitle className="mb-0">Perspective</SectionTitle>
+              <SectionTitle className="mb-0">{uiVariant.narrativeTitle}</SectionTitle>
               <button 
                 onClick={() => setActiveTab('meteo')}
                 className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 bg-muted/50 hover:bg-muted px-3 py-1.5 rounded-full"
@@ -638,7 +726,7 @@ function ExploreTab({
       case "wiki_brief":
         return wiki ? (
           <div key="wiki_brief" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={BookOpen01Icon}>Synthèse Culturelle</SectionTitle>
+            <SectionTitle icon={BookOpen01Icon}>{uiVariant.wikiTitle}</SectionTitle>
             {/* Integrated layout — photo banner + content flow */}
             {wiki.thumbnail && (
               <div className="relative rounded-xl overflow-hidden mb-3 h-[120px]">
@@ -700,7 +788,7 @@ function ExploreTab({
       case "events_brief":
         return naturalEvents.length > 0 ? (
           <div key="events_brief" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={Alert02Icon}>Alertes & Crises</SectionTitle>
+            <SectionTitle icon={Alert02Icon}>{uiVariant.eventsTitle}</SectionTitle>
             <div className="space-y-px">
               {naturalEvents.map((evt, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/15 last:border-0">
@@ -721,9 +809,9 @@ function ExploreTab({
         ) : null;
 
       case "country":
-        return country ? (
+        return country && uiVariant.showCountryCard ? (
           <div key="country" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={Globe02Icon}>Identité culturelle</SectionTitle>
+            <SectionTitle icon={Globe02Icon}>{uiVariant.countryTitle}</SectionTitle>
             <div className="flex items-start gap-3 mb-3">
               {country.flag && (
                 <img src={country.flag} alt={country.name} className="w-10 h-7 rounded object-cover border border-border/30" />
@@ -768,11 +856,11 @@ function ExploreTab({
         ) : null;
 
       case "pois":
-        return pois.length > 0 || bikeStations.length > 0 ? (
+        return uiVariant.showPois && (pois.length > 0 || bikeStations.length > 0) ? (
           <div key="pois" className="px-5 pt-4 animate-fade-in-up">
             <div className="flex items-center justify-between mb-2">
               <SectionTitle icon={Location01Icon} className="mb-0">
-                Proximité{traits.has("VITAL") ? " & Aide" : ""}
+                {uiVariant.poisTitle}{traits.has("VITAL") ? " & Aide" : ""}
               </SectionTitle>
               <button
                 onClick={() => setActiveTab("autour")}
@@ -814,12 +902,12 @@ function ExploreTab({
         ) : null;
 
       case "nature_brief":
-        return species.length > 0 ? (
+        return uiVariant.showNature && species.length > 0 ? (
           <div key="nature_brief" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={Leaf01Icon}>Biodiversité</SectionTitle>
+            <SectionTitle icon={Leaf01Icon}>{uiVariant.natureTitle}</SectionTitle>
             <p className="text-sm text-foreground leading-relaxed">
               <strong className="font-mono text-pastel-green-text">{species.length} espèces</strong> répertoriées.
-              {species[0] && ` Principale : ${species[0].vernacularName || species[0].scientificName} (${species[0].count} obs.).`}
+              {species[0] && ` ${uiVariant.natureSummaryPrefix}${species[0].vernacularName || species[0].scientificName} (${species[0].count} obs.).`}
             </p>
             <button
               onClick={() => onLayerSelect?.('nature', species)}
@@ -836,7 +924,7 @@ function ExploreTab({
         const maxMag = Math.max(...quakes.map(q => q.magnitude));
         return (
           <div key="quakes_brief" className="px-5 pt-4 animate-fade-in-up">
-            <SectionTitle icon={Alert02Icon}>Activité sismique</SectionTitle>
+            <SectionTitle icon={Alert02Icon}>{uiVariant.quakesTitle}</SectionTitle>
             <p className="text-sm text-foreground leading-relaxed">
               <strong className="font-mono text-pastel-red-text">{quakes.length} secousses</strong> (30j, 300km).
               Max : <strong className="font-mono text-pastel-red-text">M{maxMag.toFixed(1)}</strong>.
@@ -855,7 +943,7 @@ function ExploreTab({
       case "navigation":
         return (
           <div key="navigation" className="px-5 pt-4 pb-4 animate-fade-in-up">
-            <SectionTitle icon={Navigation03Icon}>Navigation</SectionTitle>
+            <SectionTitle icon={Navigation03Icon}>{uiVariant.navigationTitle}</SectionTitle>
             <div className="grid grid-cols-2 gap-1.5">
               {getNavigationOptions(lat, lon, locationName).map((opt) => (
                 <a key={opt.label} href={opt.url} target="_blank" rel="noopener noreferrer"
@@ -909,6 +997,457 @@ function ExploreTab({
         ) : (
           priorities.map((p) => renderModule(p.id))
         )}
+    </div>
+  );
+}
+
+function SituationContextPanel({
+  profile,
+  locationName,
+  weather,
+  hasWiki,
+  poiCount,
+  speciesCount,
+}: {
+  profile: SituationProfile;
+  locationName: string;
+  weather: WeatherData;
+  hasWiki: boolean;
+  poiCount: number;
+  speciesCount: number;
+}) {
+  const domainLabel = getDomainLabel(profile.domain?.value);
+  const archetypeLabel = getArchetypeLabel(profile.archetype?.value);
+  const topSignals = profile.signals.slice(0, 3);
+  const summary = buildContextSummary({
+    profile,
+    locationName,
+    weather,
+    hasWiki,
+    poiCount,
+    speciesCount,
+  });
+
+  if (!profile.domain && topSignals.length === 0) return null;
+
+  return (
+    <div className="rounded-[1.4rem] border border-border/20 bg-card/70 px-4 py-4 shadow-subtle">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">Contexte Atlas</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {domainLabel && (
+              <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                {domainLabel}
+              </span>
+            )}
+            {archetypeLabel && (
+              <span className="inline-flex items-center rounded-full border border-border/30 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                {archetypeLabel}
+              </span>
+            )}
+          </div>
+        </div>
+        {profile.domain && (
+          <div className="shrink-0 text-right">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50">Confiance</p>
+            <p className="font-mono text-sm text-foreground">{Math.round(profile.domain.confidence * 100)}%</p>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-foreground">{summary}</p>
+
+      {topSignals.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {topSignals.map((signal) => (
+            <span
+              key={signal.value}
+              className="inline-flex items-center rounded-full bg-muted/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+            >
+              {getSignalLabel(signal.value)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryListView({
+  intent,
+  items,
+  loading,
+  selectedItem,
+  onHighlight,
+  onSelect,
+}: {
+  intent: SearchIntent;
+  items: NearbyPOI[];
+  loading: boolean;
+  selectedItem: NearbyPOI | null;
+  onHighlight?: (poi: NearbyPOI | null) => void;
+  onSelect: (poi: NearbyPOI) => void;
+}) {
+  return (
+    <div className="pb-8 animate-fade-in-up">
+      <div className="px-5 pt-4">
+        <div className="mb-4">
+          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/55">Vue liste</p>
+          <h2 className="text-2xl font-serif tracking-tight mt-1">{intent.emoji} {intent.label}</h2>
+          <p className="text-xs text-muted-foreground/70 mt-1">{intent.emptyStateHint}</p>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3 animate-pulse">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-20 rounded-2xl bg-muted/35" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-2xl border border-border/20 px-4 py-5">
+            <p className="text-sm text-foreground">Aucun résultat proche pour cette catégorie.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Déplace la carte ou choisis une autre intention.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <button
+                key={`${item.lat}-${item.lon}-${index}`}
+                onClick={() => onSelect(item)}
+                onMouseEnter={() => onHighlight?.(item)}
+                onFocus={() => onHighlight?.(item)}
+                onMouseLeave={() => onHighlight?.(selectedItem)}
+                className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${
+                  selectedItem && selectedItem.lat === item.lat && selectedItem.lon === item.lon && selectedItem.name === item.name
+                    ? "border-foreground/15 bg-muted/35 shadow-subtle"
+                    : "border-border/20 bg-card/70 hover:bg-muted/25"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[9px] uppercase tracking-widest text-muted-foreground">
+                        {item.category}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">#{index + 1}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-foreground truncate">{item.name}</p>
+                    <p className="text-[11px] text-muted-foreground/60">{item.type || "Point d'intérêt"}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-mono text-foreground">
+                      {item.distance < 1000 ? `${item.distance}m` : `${(item.distance / 1000).toFixed(1)}km`}
+                    </p>
+                    <p className="mt-2 text-[10px] uppercase tracking-widest text-muted-foreground">Ouvrir</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function buildContextSummary({
+  profile,
+  locationName,
+  weather,
+  hasWiki,
+  poiCount,
+  speciesCount,
+}: {
+  profile: SituationProfile;
+  locationName: string;
+  weather: WeatherData;
+  hasWiki: boolean;
+  poiCount: number;
+  speciesCount: number;
+}) {
+  const parts: string[] = [];
+  const domain = profile.domain?.value;
+  const archetype = profile.archetype?.value;
+
+  if (domain === "NATURE") {
+    parts.push(`Le lieu est analysé comme un contexte naturel${archetype ? ` de type ${getArchetypeLabel(archetype)?.toLowerCase()}` : ""}.`);
+    if (speciesCount > 0) parts.push(`${speciesCount} espèces sont déjà remontées dans le voisinage.`);
+  } else if (domain === "URBAN") {
+    parts.push(`Le lieu se comporte comme un tissu urbain structuré, avec ${poiCount} points d'intérêt détectés.`);
+  } else if (domain === "MARITIME") {
+    parts.push("Le contexte principal est maritime ou côtier, donc les repères utiles doivent privilégier exposition, météo et accès.");
+  } else if (domain === "CULTURAL") {
+    parts.push("Le lieu présente un signal culturel fort, avec une fiche qui doit privilégier lecture, contexte et patrimoine.");
+  } else if (domain === "TRANSIT") {
+    parts.push("Le lieu agit comme un nœud de mobilité, donc la navigation et les accès sont prioritaires.");
+  } else if (domain === "ISOLATED") {
+    parts.push("Le lieu est faiblement équipé ou peu documenté, ce qui justifie une expérience plus sobre et orientée survie/orientation.");
+  } else {
+    parts.push(`Le contexte de ${locationName} reste en cours de consolidation à partir des sources disponibles.`);
+  }
+
+  if (profile.traits.has("HOSTILE")) {
+    parts.push("Les conditions en cours appellent une vigilance renforcée.");
+  } else if (weather.current.temperature >= 32) {
+    parts.push("La chaleur actuelle pèse déjà sur les recommandations terrain.");
+  }
+
+  if (profile.traits.has("VITAL")) {
+    parts.push("Les services d'assistance doivent rester immédiatement accessibles.");
+  }
+
+  if (!hasWiki && poiCount === 0) {
+    parts.push("Le contexte documentaire reste faible pour l'instant.");
+  }
+
+  return parts.join(" ");
+}
+
+function getDomainLabel(domain?: MacroDomain | null) {
+  switch (domain) {
+    case "NATURE":
+      return "Nature";
+    case "URBAN":
+      return "Urbain";
+    case "MARITIME":
+      return "Maritime";
+    case "CULTURAL":
+      return "Culture";
+    case "TRANSIT":
+      return "Transit";
+    case "ISOLATED":
+      return "Isolé";
+    default:
+      return null;
+  }
+}
+
+function getArchetypeLabel(archetype?: Archetype | null) {
+  switch (archetype) {
+    case "ALPINE":
+      return "Alpin";
+    case "FOREST":
+      return "Forestier";
+    case "DESERT":
+      return "Désertique";
+    case "JUNGLE":
+      return "Jungle";
+    case "SAVANNAH":
+      return "Savane";
+    case "COASTAL":
+      return "Côtier";
+    case "OPEN_OCEAN":
+      return "Haute mer";
+    case "HISTORIC_CORE":
+      return "Cœur historique";
+    case "MUSEUM_DISTRICT":
+      return "Pôle muséal";
+    case "CIVIC_CENTER":
+      return "Centre civique";
+    case "AIRPORT_HUB":
+      return "Hub aéroportuaire";
+    case "STATION_DISTRICT":
+      return "Quartier gare";
+    case "REMOTE_FRONTIER":
+      return "Frontière isolée";
+    default:
+      return null;
+  }
+}
+
+function getSignalLabel(signal: SituationalSignal) {
+  switch (signal) {
+    case "EMERGENCY_SERVICES":
+      return "Assistance";
+    case "EXTREME_WEATHER":
+      return "Météo sévère";
+    case "HIGH_BIODIVERSITY":
+      return "Biodiversité";
+    case "NIGHT_TIME":
+      return "Nuit";
+    case "HISTORICAL_SIGNIFICANCE":
+      return "Patrimoine";
+    case "HIGH_ALTITUDE":
+      return "Altitude";
+    case "LOW_DENSITY":
+      return "Faible densité";
+    case "COASTAL_ACCESS":
+      return "Littoral";
+    case "TRANSIT_PRESSURE":
+      return "Mobilité";
+    case "FOREIGN_CONTEXT":
+      return "Contexte externe";
+    case "MACRO_VIEW":
+      return "Vue macro";
+    default:
+      return signal;
+  }
+}
+
+interface ExploreVariant {
+  narrativeTitle: string;
+  wikiTitle: string;
+  eventsTitle: string;
+  countryTitle: string;
+  poisTitle: string;
+  natureTitle: string;
+  quakesTitle: string;
+  navigationTitle: string;
+  natureSummaryPrefix: string;
+  showCountryCard: boolean;
+  showPois: boolean;
+  showNature: boolean;
+  actionTitle: string;
+  actionBody: string;
+}
+
+function buildExploreVariant(profile: SituationProfile): ExploreVariant {
+  const domain = profile.domain?.value;
+  const isForeign = profile.traits.has("FOREIGN");
+  const isHostile = profile.traits.has("HOSTILE");
+
+  if (domain === "NATURE") {
+    return {
+      narrativeTitle: "Lecture du terrain",
+      wikiTitle: "Contexte du milieu",
+      eventsTitle: "Vigilance environnementale",
+      countryTitle: "Repères de territoire",
+      poisTitle: "Camp de base",
+      natureTitle: "Faune & biodiversité",
+      quakesTitle: "Aléas géologiques",
+      navigationTitle: "Orientation",
+      natureSummaryPrefix: "Espèce repère : ",
+      showCountryCard: isForeign,
+      showPois: true,
+      showNature: true,
+      actionTitle: "Conseil Atlas",
+      actionBody: isHostile
+        ? "Les conditions demandent de prioriser exposition, eau, météo et itinéraire de repli."
+        : "Privilégier altitude, météo, exposition et points d'appui avant toute exploration.",
+    };
+  }
+
+  if (domain === "MARITIME") {
+    return {
+      narrativeTitle: "Lecture maritime",
+      wikiTitle: "Contexte littoral",
+      eventsTitle: "État des risques",
+      countryTitle: "Repères côtiers",
+      poisTitle: "Accès & rivage",
+      natureTitle: "Faune marine",
+      quakesTitle: "Activité tellurique",
+      navigationTitle: "Cap & accès",
+      natureSummaryPrefix: "Observation dominante : ",
+      showCountryCard: true,
+      showPois: true,
+      showNature: true,
+      actionTitle: "Conseil Atlas",
+      actionBody: "Dans un contexte maritime, l'exposition, le vent et les accès sûrs priment sur les services classiques.",
+    };
+  }
+
+  if (domain === "TRANSIT") {
+    return {
+      narrativeTitle: "Lecture des flux",
+      wikiTitle: "Contexte du lieu",
+      eventsTitle: "Perturbations & incidents",
+      countryTitle: "Repères de destination",
+      poisTitle: "Accès & services",
+      natureTitle: "Environnement proche",
+      quakesTitle: "Alerte régionale",
+      navigationTitle: "Accès rapides",
+      natureSummaryPrefix: "Présence repérée : ",
+      showCountryCard: isForeign,
+      showPois: true,
+      showNature: false,
+      actionTitle: "Conseil Atlas",
+      actionBody: "Dans un nœud de transit, privilégier sorties, correspondances et solutions de repli immédiates.",
+    };
+  }
+
+  if (domain === "CULTURAL") {
+    return {
+      narrativeTitle: "Lecture du lieu",
+      wikiTitle: "Synthèse patrimoniale",
+      eventsTitle: "Contexte & alertes",
+      countryTitle: "Cadre culturel",
+      poisTitle: "Services autour du site",
+      natureTitle: "Cadre naturel",
+      quakesTitle: "Contexte géologique",
+      navigationTitle: "Accès au site",
+      natureSummaryPrefix: "Espèce notable : ",
+      showCountryCard: true,
+      showPois: true,
+      showNature: true,
+      actionTitle: "Conseil Atlas",
+      actionBody: "Sur un site culturel, la compréhension du contexte et des accès compte autant que la météo locale.",
+    };
+  }
+
+  if (domain === "ISOLATED") {
+    return {
+      narrativeTitle: "Lecture d'isolement",
+      wikiTitle: "Contexte rare",
+      eventsTitle: "Exposition & risques",
+      countryTitle: "Repères souverains",
+      poisTitle: "Points d'appui",
+      natureTitle: "Présence biologique",
+      quakesTitle: "Instabilité du secteur",
+      navigationTitle: "Orientation & sortie",
+      natureSummaryPrefix: "Présence repérée : ",
+      showCountryCard: true,
+      showPois: false,
+      showNature: true,
+      actionTitle: "Conseil Atlas",
+      actionBody: "Dans un contexte isolé, l'orientation, les coordonnées et la capacité de repli priment sur le confort d'exploration.",
+    };
+  }
+
+  return {
+    narrativeTitle: "Perspective",
+    wikiTitle: "Synthèse culturelle",
+    eventsTitle: "Alertes & crises",
+    countryTitle: "Identité culturelle",
+    poisTitle: "Proximité",
+    natureTitle: "Biodiversité",
+    quakesTitle: "Activité sismique",
+    navigationTitle: "Navigation",
+    natureSummaryPrefix: "Principale : ",
+    showCountryCard: isForeign || domain === "URBAN",
+    showPois: true,
+    showNature: domain !== "TRANSIT",
+    actionTitle: "Conseil Atlas",
+    actionBody: isHostile
+      ? "Le contexte reste praticable, mais certaines conditions doivent être surveillées de près."
+      : "Le lieu est présenté dans un mode d'exploration généraliste, avec priorité à la lecture pratique.",
+  };
+}
+
+function ContextActionCard({
+  variant,
+  weather,
+  lat,
+  lon,
+}: {
+  variant: ExploreVariant;
+  weather: WeatherData;
+  lat: number;
+  lon: number;
+}) {
+  return (
+    <div className="rounded-[1.2rem] border border-border/15 bg-muted/20 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/55">{variant.actionTitle}</p>
+          <p className="mt-1 text-sm leading-relaxed text-foreground">{variant.actionBody}</p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50">Repères</p>
+          <p className="mt-1 text-xs font-mono text-foreground">{weather.elevation.toFixed(0)}m</p>
+          <p className="text-xs font-mono text-muted-foreground">{lat.toFixed(2)}, {lon.toFixed(2)}</p>
+        </div>
+      </div>
     </div>
   );
 }

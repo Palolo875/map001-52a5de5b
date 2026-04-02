@@ -262,6 +262,30 @@ const overpassCategories: Record<string, { query: string; label: string }> = {
   worship: { query: `node["amenity"="place_of_worship"]`, label: "Lieu de culte" },
 };
 
+function mapOverpassElementToPOI(lat: number, lon: number, e: any): NearbyPOI | null {
+  const tags = e.tags || {};
+  if (!tags.name) return null;
+
+  let category = "Lieu";
+  if (tags.public_transport) category = "Transport";
+  else if (tags.amenity === "hospital") category = "Hôpital";
+  else if (tags.amenity === "pharmacy") category = "Pharmacie";
+  else if (tags.amenity === "restaurant" || tags.amenity === "cafe") category = "Restaurant";
+  else if (tags.tourism === "hotel" || tags.tourism === "guest_house") category = "Hôtel";
+  else if (tags.tourism === "museum") category = "Musée";
+  else if (tags.leisure === "park" || tags.leisure === "garden") category = "Parc";
+  else if (tags.amenity === "place_of_worship") category = "Lieu de culte";
+
+  return {
+    name: tags.name,
+    type: tags.amenity || tags.tourism || tags.leisure || tags.public_transport || "",
+    category,
+    distance: Math.round(haversine(lat, lon, e.lat, e.lon)),
+    lat: e.lat,
+    lon: e.lon,
+  };
+}
+
 async function fetchLocalOverturePOIs(lat: number, lon: number, radiusM: number): Promise<NearbyPOI[] | null> {
   return null;
 }
@@ -284,32 +308,35 @@ export async function fetchNearbyPOIs(lat: number, lon: number, radiusM = 2000):
     const data = await res.json();
 
     const pois: NearbyPOI[] = (data.elements || [])
-      .filter((e: any) => e.tags?.name)
-      .map((e: any) => {
-        const tags = e.tags;
-        let category = "Lieu";
-        if (tags.public_transport) category = "Transport";
-        else if (tags.amenity === "hospital") category = "Hôpital";
-        else if (tags.amenity === "pharmacy") category = "Pharmacie";
-        else if (tags.amenity === "restaurant") category = "Restaurant";
-        else if (tags.tourism === "hotel") category = "Hôtel";
-        else if (tags.tourism === "museum") category = "Musée";
-        else if (tags.leisure === "park") category = "Parc";
-        else if (tags.amenity === "place_of_worship") category = "Lieu de culte";
-
-        return {
-          name: tags.name,
-          type: tags.amenity || tags.tourism || tags.leisure || tags.public_transport || "",
-          category,
-          distance: Math.round(haversine(lat, lon, e.lat, e.lon)),
-          lat: e.lat,
-          lon: e.lon,
-        };
-      })
+      .map((e: any) => mapOverpassElementToPOI(lat, lon, e))
+      .filter(Boolean)
       .sort((a: NearbyPOI, b: NearbyPOI) => a.distance - b.distance)
       .slice(0, 20);
 
     return pois;
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPOIsByCategory(lat: number, lon: number, categoryKey: string, radiusM = 5000): Promise<NearbyPOI[]> {
+  try {
+    const category = overpassCategories[categoryKey];
+    if (!category) return [];
+
+    const query = `[out:json][timeout:12];(${category.query}(around:${radiusM},${lat},${lon}););out body 80;`;
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      body: `data=${encodeURIComponent(query)}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    const data = await res.json();
+
+    return (data.elements || [])
+      .map((e: any) => mapOverpassElementToPOI(lat, lon, e))
+      .filter(Boolean)
+      .sort((a: NearbyPOI, b: NearbyPOI) => a.distance - b.distance)
+      .slice(0, 24);
   } catch {
     return [];
   }
