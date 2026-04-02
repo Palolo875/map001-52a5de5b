@@ -215,96 +215,55 @@ export default function LocationDrawer({
           </div>
         )}
 
-        <DrawerHeader className={`pb-0 px-5 relative transition-all duration-300 ${activeTab !== 'explore' ? 'pt-14' : ''}`}>
-          <div className="flex items-center justify-between pointer-events-auto">
-            <div className="min-w-0">
-              <DrawerTitle className="font-serif text-3xl text-foreground truncate tracking-tight">
-                {drawerMode === "category-list" && categoryIntent ? categoryIntent.label : locationName}
-              </DrawerTitle>
-              <div className="flex items-center gap-2 mt-1.5">
+        <DrawerHeader className={`pb-4 px-5 relative transition-all duration-300 ${activeTab !== 'explore' ? 'pt-14' : ''}`}>
+          <div className="flex items-start justify-between pointer-events-auto">
+            <div className="min-w-0 pr-4">
+              <div className="flex items-center gap-2">
+                <DrawerTitle className="font-serif text-4xl text-foreground truncate tracking-tight">
+                  {drawerMode === "category-list" && categoryIntent ? categoryIntent.label : locationName}
+                </DrawerTitle>
                 {drawerMode === "location-detail" && (
-                  <>
-                    <p className="text-[10px] font-mono text-muted-foreground/70 bg-muted/50 px-1.5 py-0.5 rounded-lg">
-                      {lat.toFixed(4)}, {lon.toFixed(4)}
-                    </p>
-                    <button 
-                      onClick={speakAura}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all text-[9px] uppercase tracking-widest font-medium ${
-                        isSpeaking 
-                          ? 'bg-primary border-primary text-primary-foreground animate-soft-pulse' 
-                          : 'bg-card border-border/40 text-muted-foreground hover:bg-secondary'
-                      }`}
-                    >
-                      <HugeiconsIcon icon={VolumeHighIcon} size={10} />
-                      {isSpeaking ? "Pause" : "Audio"}
-                    </button>
-                  </>
+                  <button 
+                    onClick={speakAura}
+                    className={`flex items-center justify-center h-8 w-8 rounded-full transition-all shrink-0 ${
+                      isSpeaking 
+                        ? 'text-primary-foreground bg-primary animate-soft-pulse' 
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    }`}
+                    title={isSpeaking ? "Pause" : "Audio"}
+                  >
+                    <HugeiconsIcon icon={VolumeHighIcon} size={16} />
+                  </button>
                 )}
+              </div>
+              <div className="mt-1.5 text-[11px] text-muted-foreground font-mono tracking-wide">
+                {drawerMode === "location-detail" ? (
+                  <span>
+                    {lat.toFixed(4)}°, {lon.toFixed(4)}°
+                    {current && ` • ${Math.round(current.temperature)}°C • ${getWeatherDescription(current.weatherCode)}`}
+                  </span>
+                ) : categoryIntent ? (
+                  <span className="font-sans normal-case">{categoryIntent.emptyStateHint}</span>
+                ) : null}
               </div>
             </div>
             <DrawerClose 
-              className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors shrink-0" 
+              className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 hover:bg-muted/60 transition-colors shrink-0" 
               onClick={() => onLayerSelect?.('none')}
             >
               <HugeiconsIcon icon={Cancel01Icon} size={18} className="text-muted-foreground" />
             </DrawerClose>
           </div>
-
-          <p className="text-xs text-muted-foreground mt-1.5 italic">
-            {drawerMode === "category-list" && categoryIntent
-              ? categoryIntent.emptyStateHint
-              : current
-                ? `${getWeatherDescription(current.weatherCode)}${country ? ` — ${country.subregion || country.region || country.name}` : ""}`
-                : ""}
-          </p>
         </DrawerHeader>
-
-        {/* ─── Temperature Hero + Perspective side by side ─── */}
-        <div className={`transition-all duration-300 overflow-hidden ${drawerMode === 'location-detail' && activeTab === 'explore' ? 'opacity-100 max-h-[180px]' : 'opacity-0 max-h-0'}`}>
-          <div className="px-5 pt-4 pb-3">
-            {current && (
-            <div className="flex items-start gap-4">
-              {/* Left: Temperature */}
-              <div className="shrink-0">
-                <div className="flex items-end gap-1">
-                  <span className="text-5xl font-serif tracking-tighter leading-none">{Math.round(current.temperature)}</span>
-                  <span className="text-lg text-muted-foreground font-serif mb-1">°C</span>
-                </div>
-                <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <HugeiconsIcon icon={Sun03Icon} size={10} className="text-muted-foreground/60" />
-                    Ressenti {current.apparentTemperature.toFixed(0)}°
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <HugeiconsIcon icon={DropletIcon} size={10} className="text-muted-foreground/60" />
-                    {current.humidity}%
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <HugeiconsIcon icon={FastWindIcon} size={10} className="text-muted-foreground/60" />
-                    {current.windSpeed.toFixed(0)} km/h
-                  </span>
-                </div>
-              </div>
-
-              {/* Right: Top 2 narrative insights */}
-              <div className="flex-1 min-w-0 border-l border-border/20 pl-4">
-                {narrative.slice(0, 2).map((insight, i) => (
-                  <NarrativeCard key={insight.category + i} insight={insight} index={i} />
-                ))}
-              </div>
-            </div>
-            )}
-          </div>
-        </div>
 
         {/* ─── Action Pills ─── */}
         <div className={`transition-all duration-300 overflow-hidden ${drawerMode === 'location-detail' && activeTab === 'explore' ? 'opacity-100 max-h-[80px]' : 'opacity-0 max-h-0'}`}>
-          <div className="px-5 pb-3 mt-1">
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar snap-x pb-1">
+          <div className="px-5 pb-4 mt-2 border-b border-border/10">
+            <div className="flex gap-4 overflow-x-auto hide-scrollbar snap-x pb-1 items-center">
               {traits.has("VITAL") && (
                 <a
                   href="tel:112"
-                  className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-pastel-red-text/30 bg-pastel-red-bg px-4 text-[10px] font-bold uppercase tracking-widest text-pastel-red-text animate-soft-pulse shadow-soft"
+                  className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full bg-pastel-red-bg px-4 text-[10px] font-bold uppercase tracking-widest text-pastel-red-text animate-soft-pulse"
                 >
                   <HugeiconsIcon icon={CallIcon} size={13} />
                   Appeler (112)
@@ -321,13 +280,13 @@ export default function LocationDrawer({
                     }).catch(() => {});
                   }
                 }}
-                className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all"
+                className="snap-start shrink-0 flex items-center gap-1.5 px-2 py-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all"
               >
-                <HugeiconsIcon icon={Share01Icon} size={13} />
+                <HugeiconsIcon icon={Share01Icon} size={14} />
                 Partager
               </button>
-              <button className="snap-start shrink-0 h-9 flex items-center gap-2 rounded-full border border-border/40 bg-card px-4 text-[10px] font-medium uppercase tracking-widest text-foreground hover:bg-secondary transition-all">
-                <HugeiconsIcon icon={Bookmark02Icon} size={13} />
+              <button className="snap-start shrink-0 flex items-center gap-1.5 px-2 py-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all">
+                <HugeiconsIcon icon={Bookmark02Icon} size={14} />
                 Sauver
               </button>
             </div>
@@ -622,28 +581,25 @@ function ExploreTab({
   function renderModule(moduleId: string) {
     switch (moduleId) {
       case "narrative":
-        return (
-          <div key="narrative" className="px-5 pt-4">
-            <div className="flex items-center justify-between mb-2">
+        return narrative.length > 0 ? (
+          <div key="narrative" className="px-5 pt-8">
+            <div className="flex items-center justify-between mb-4">
               <SectionTitle className="mb-0">{uiVariant.narrativeTitle}</SectionTitle>
               <button 
                 onClick={() => setActiveTab('meteo')}
-                className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 bg-muted/50 hover:bg-muted px-3 py-1.5 rounded-full"
+                className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
               >
                 Météo détaillée
                 <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
               </button>
             </div>
-            {/* Show remaining insights (first 2 are in header) */}
-            {narrative.slice(2).length > 0 && (
-              <div className="border-t border-border/15 pt-2">
-                {narrative.slice(2).map((insight, i) => (
-                  <NarrativeCard key={insight.category + i} insight={insight} index={i} />
-                ))}
-              </div>
-            )}
+            <div className="space-y-4">
+              {narrative.map((insight, i) => (
+                <NarrativeCard key={insight.category + i} insight={insight} index={i} />
+              ))}
+            </div>
           </div>
-        );
+        ) : null;
       
       case "story":
         return (
@@ -667,26 +623,21 @@ function ExploreTab({
         if (!isActuallyIsolated) return null;
         
         return (
-          <div key="isolated_brief" className="px-5 pt-4 animate-fade-in-up">
-            <div className="rounded-2xl p-6 text-center border border-border/15">
-              <div className="flex flex-col items-center">
-                <div className="w-12 h-12 bg-muted/30 rounded-full flex items-center justify-center border border-border/20 mb-4">
-                  <HugeiconsIcon icon={Globe02Icon} size={24} className="text-muted-foreground" />
+          <div key="isolated_brief" className="px-5 pt-8 animate-fade-in-up">
+            <div className="flex flex-col items-start">
+              <HugeiconsIcon icon={Globe02Icon} size={24} className="text-muted-foreground mb-4" />
+              <h3 className="font-serif text-2xl text-foreground mb-2">L'essentiel du lieu</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+                Ce point est déconnecté des infrastructures humaines.
+              </p>
+              <div className="flex gap-8">
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Silence</p>
+                  <p className="text-base font-mono text-foreground">95-100%</p>
                 </div>
-                <h3 className="font-serif text-xl text-foreground mb-2">L'essentiel du lieu</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed max-w-[220px] mx-auto mb-4">
-                  Ce point est déconnecté des infrastructures humaines.
-                </p>
-                <div className="flex gap-6 text-center">
-                  <div>
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Silence</p>
-                    <p className="text-sm font-mono text-foreground">95-100%</p>
-                  </div>
-                  <div className="w-px h-8 bg-border/30" />
-                  <div>
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Pollution</p>
-                    <p className="text-sm font-mono text-foreground">0.0%</p>
-                  </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Pollution</p>
+                  <p className="text-base font-mono text-foreground">0.0%</p>
                 </div>
               </div>
             </div>
@@ -696,79 +647,70 @@ function ExploreTab({
 
       case "photos":
         return photos.length > 0 ? (
-          <div key="photos" className="px-5 pt-4 animate-fade-in-up">
+          <div key="photos" className="px-5 pt-8 animate-fade-in-up">
             <SectionTitle icon={Image01Icon}>Documentation</SectionTitle>
-            <div className="grid grid-cols-3 gap-1 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-3 gap-1.5 rounded-2xl overflow-hidden">
               {photos.slice(0, 1).map((p, i) => (
-                <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="col-span-2 row-span-2 block relative group rounded-xl overflow-hidden">
-                  <img src={p.thumbUrl} alt={p.title} className="w-full h-full min-h-[120px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="col-span-2 row-span-2 block relative group rounded-2xl overflow-hidden">
+                  <img src={p.thumbUrl} alt={p.title} className="w-full h-full min-h-[160px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </a>
               ))}
               {photos.slice(1, 3).map((p, i) => (
-                <a key={i+1} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-xl overflow-hidden">
-                  <img src={p.thumbUrl} alt={p.title} className="w-full h-[58px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                <a key={i+1} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-2xl overflow-hidden">
+                  <img src={p.thumbUrl} alt={p.title} className="w-full h-[78px] object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
                 </a>
               ))}
             </div>
-            {photos.length > 3 && (
-              <div className="grid grid-cols-3 gap-1 mt-1">
-                {photos.slice(3, 6).map((p, i) => (
-                  <a key={i+3} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative group rounded-xl overflow-hidden">
-                    <img src={p.thumbUrl} alt={p.title} className="w-full h-16 object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
-                  </a>
-                ))}
-              </div>
-            )}
           </div>
         ) : null;
 
       case "wiki_brief":
         return wiki ? (
-          <div key="wiki_brief" className="px-5 pt-4 animate-fade-in-up">
+          <div key="wiki_brief" className="px-5 pt-8 animate-fade-in-up">
             <SectionTitle icon={BookOpen01Icon}>{uiVariant.wikiTitle}</SectionTitle>
             {/* Integrated layout — photo banner + content flow */}
             {wiki.thumbnail && (
-              <div className="relative rounded-xl overflow-hidden mb-3 h-[120px]">
+              <div className="relative rounded-2xl overflow-hidden mb-4 h-[140px]">
                 <img src={wiki.thumbnail} alt={wiki.title} className="w-full h-full object-cover" loading="lazy" />
                 <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/30 to-transparent" />
-                <div className="absolute bottom-0 inset-x-0 p-3">
-                  <h3 className="text-sm font-serif text-foreground">{wiki.title}</h3>
+                <div className="absolute bottom-0 inset-x-0 p-4">
+                  <h3 className="text-lg font-serif text-foreground">{wiki.title}</h3>
                   {wiki.description && (
-                    <p className="text-[10px] text-muted-foreground/70">{wiki.description}</p>
+                    <p className="text-[11px] text-muted-foreground/80 mt-0.5">{wiki.description}</p>
                   )}
                 </div>
               </div>
             )}
             {!wiki.thumbnail && (
-              <div className="mb-2">
-                <h3 className="text-sm font-medium text-foreground">{wiki.title}</h3>
+              <div className="mb-3">
+                <h3 className="text-lg font-serif text-foreground">{wiki.title}</h3>
                 {wiki.description && (
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">{wiki.description}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mt-1">{wiki.description}</p>
                 )}
               </div>
             )}
-            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{wiki.extract}</p>
+            <p className="text-sm text-foreground leading-relaxed line-clamp-5">{wiki.extract}</p>
             
             {/* Facts inline row */}
             {wiki.facts && Object.keys(wiki.facts).length > 0 && (
-              <div className="flex gap-4 mt-3 pt-3 border-t border-border/15">
+              <div className="flex gap-6 mt-4 pt-4">
                 {wiki.facts.population && (
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Population</p>
-                    <p className="text-sm font-mono text-foreground">{formatPopulation(wiki.facts.population)}</p>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Population</p>
+                    <p className="text-[13px] font-mono text-foreground">{formatPopulation(wiki.facts.population)}</p>
                   </div>
                 )}
                 {wiki.facts.area && (
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Superficie</p>
-                    <p className="text-sm font-mono text-foreground">{wiki.facts.area.toLocaleString("fr-FR")} km²</p>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Superficie</p>
+                    <p className="text-[13px] font-mono text-foreground">{wiki.facts.area.toLocaleString("fr-FR")} km²</p>
                   </div>
                 )}
                 {wiki.facts.elevation && (
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">Altitude</p>
-                    <p className="text-sm font-mono text-foreground">{wiki.facts.elevation} m</p>
+                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-0.5">Altitude</p>
+                    <p className="text-[13px] font-mono text-foreground">{wiki.facts.elevation} m</p>
                   </div>
                 )}
               </div>
@@ -776,10 +718,10 @@ function ExploreTab({
 
             {wiki.url && (
               <a href={wiki.url} target="_blank" rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                className="mt-4 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
               >
-                Lire la suite
-                <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
+                Lire sur Wikipédia
+                <HugeiconsIcon icon={ArrowRight01Icon} size={12} />
               </a>
             )}
           </div>
@@ -787,20 +729,20 @@ function ExploreTab({
 
       case "events_brief":
         return naturalEvents.length > 0 ? (
-          <div key="events_brief" className="px-5 pt-4 animate-fade-in-up">
+          <div key="events_brief" className="px-5 pt-8 animate-fade-in-up">
             <SectionTitle icon={Alert02Icon}>{uiVariant.eventsTitle}</SectionTitle>
-            <div className="space-y-px">
+            <div className="space-y-4 mt-2">
               {naturalEvents.map((evt, i) => (
-                <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/15 last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground mb-0.5">{evt.title}</p>
-                    <div className="flex gap-2">
-                      <span className="text-[10px] text-pastel-red-text uppercase tracking-widest">{evt.category}</span>
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-widest">({evt.source})</span>
+                <div key={i} className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1 pr-4">
+                    <p className="text-[15px] font-medium text-foreground mb-1">{evt.title}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold text-pastel-red-text uppercase tracking-widest">{evt.category}</span>
+                      <span className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">• {evt.source}</span>
                     </div>
                   </div>
-                  <span className="text-xs font-mono text-pastel-red-text ml-3 shrink-0">
-                    {evt.distanceKm > 0 ? `${evt.distanceKm} km` : "National"}
+                  <span className="text-[13px] font-mono text-pastel-red-text shrink-0 mt-0.5">
+                    {evt.distanceKm > 0 ? `${evt.distanceKm} km` : "Nat."}
                   </span>
                 </div>
               ))}
@@ -857,43 +799,46 @@ function ExploreTab({
 
       case "pois":
         return uiVariant.showPois && (pois.length > 0 || bikeStations.length > 0) ? (
-          <div key="pois" className="px-5 pt-4 animate-fade-in-up">
-            <div className="flex items-center justify-between mb-2">
+          <div key="pois" className="px-5 pt-8 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-4">
               <SectionTitle icon={Location01Icon} className="mb-0">
                 {uiVariant.poisTitle}{traits.has("VITAL") ? " & Aide" : ""}
               </SectionTitle>
               <button
                 onClick={() => setActiveTab("autour")}
-                className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 bg-muted/50 hover:bg-muted px-3 py-1.5 rounded-full"
+                className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
               >
                 Tout voir
-                <HugeiconsIcon icon={ArrowRight01Icon} size={10} />
+                <HugeiconsIcon icon={ArrowRight01Icon} size={12} />
               </button>
             </div>
-            <div className="border-t border-border/15">
+            <div className="space-y-4">
               {/* Combine POIs and BikeStations, sort by distance, take top 5 */}
               {[...pois, ...bikeStations.map(b => ({ name: b.name, category: "Vélos", distance: b.distance, isBike: true, free_bikes: b.free_bikes }))]
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 5)
                 .map((poi: any, i) => (
-                <div key={i} className={`flex items-center justify-between py-2.5 border-b border-border/15 last:border-0 ${poi.category === 'Hôpital' || poi.category === 'Pharmacie' ? 'bg-pastel-red-bg/10' : ''}`}>
-                  <div className="flex items-start gap-2 min-w-0 flex-1">
-                    <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider mt-0.5 ${
+                <div key={i} className={`flex items-start justify-between ${poi.category === 'Hôpital' || poi.category === 'Pharmacie' ? 'bg-pastel-red-bg/30 p-3 rounded-2xl -mx-3' : ''}`}>
+                  <div className="flex items-start gap-3 min-w-0 flex-1 pr-4">
+                    <span className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full text-[12px] mt-0.5 ${
                       poi.category === 'Hôpital' || poi.category === 'Pharmacie' 
-                        ? 'bg-pastel-red-bg text-pastel-red-text font-semibold' 
+                        ? 'bg-pastel-red-bg text-pastel-red-text' 
                         : poi.isBike
-                          ? 'bg-pastel-blue-bg text-pastel-blue-text font-semibold'
+                          ? 'bg-pastel-blue-bg text-pastel-blue-text'
                           : 'bg-muted/40 text-muted-foreground'
                     }`}>
-                      {poi.category}
+                      {getCategoryMarkerGlyph(poi.category)}
                     </span>
-                    <span className="text-sm text-foreground truncate">
-                      {poi.name}
-                      {poi.isBike && <span className="ml-2 text-[10px] text-muted-foreground">({poi.free_bikes} dispos)</span>}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-medium text-foreground truncate">{poi.name}</p>
+                      <p className="text-[12px] text-muted-foreground/80 mt-0.5">
+                        {poi.category}
+                        {poi.isBike && ` • ${poi.free_bikes} dispos`}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs font-mono text-muted-foreground/60 ml-2 shrink-0">
-                    {poi.distance < 1000 ? `${poi.distance}m` : `${(poi.distance / 1000).toFixed(1)}km`}
+                  <span className="text-[13px] font-mono text-muted-foreground/60 shrink-0 mt-1">
+                    {poi.distance < 1000 ? `${Math.round(poi.distance)}m` : `${(poi.distance / 1000).toFixed(1)}km`}
                   </span>
                 </div>
               ))}
@@ -1031,45 +976,41 @@ function SituationContextPanel({
   if (!profile.domain && topSignals.length === 0) return null;
 
   return (
-    <div className="rounded-[1.4rem] border border-border/20 bg-card/70 px-4 py-4 shadow-subtle">
-      <div className="flex items-start justify-between gap-3">
+    <div className="px-5 py-4">
+      <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">Contexte Atlas</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            {domainLabel && (
-              <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground">
-                {domainLabel}
-              </span>
-            )}
-            {archetypeLabel && (
-              <span className="inline-flex items-center rounded-full border border-border/30 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                {archetypeLabel}
-              </span>
-            )}
-          </div>
+          <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60 mb-2">Contexte Atlas</p>
         </div>
         {profile.domain && (
           <div className="shrink-0 text-right">
             <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50">Confiance</p>
-            <p className="font-mono text-sm text-foreground">{Math.round(profile.domain.confidence * 100)}%</p>
+            <p className="font-mono text-xs text-foreground">{Math.round(profile.domain.confidence * 100)}%</p>
           </div>
         )}
       </div>
 
-      <p className="mt-3 text-sm leading-relaxed text-foreground">{summary}</p>
+      <p className="text-[15px] leading-relaxed text-foreground mt-1">{summary}</p>
 
-      {topSignals.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {topSignals.map((signal) => (
-            <span
-              key={signal.value}
-              className="inline-flex items-center rounded-full bg-muted/50 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground"
-            >
-              {getSignalLabel(signal.value)}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {domainLabel && (
+          <span className="inline-flex items-center rounded-full bg-secondary/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+            {domainLabel}
+          </span>
+        )}
+        {archetypeLabel && (
+          <span className="inline-flex items-center rounded-full border border-border/30 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            {archetypeLabel}
+          </span>
+        )}
+        {topSignals.map((signal) => (
+          <span
+            key={signal.value}
+            className="inline-flex items-center rounded-full bg-muted/40 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+          >
+            {getSignalLabel(signal.value)}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1110,40 +1051,49 @@ function CategoryListView({
             <p className="text-xs text-muted-foreground/60 mt-1">Déplace la carte ou choisis une autre intention.</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {items.map((item, index) => (
-              <button
-                key={`${item.lat}-${item.lon}-${index}`}
-                onClick={() => onSelect(item)}
-                onMouseEnter={() => onHighlight?.(item)}
-                onFocus={() => onHighlight?.(item)}
-                onMouseLeave={() => onHighlight?.(selectedItem)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${
-                  selectedItem && selectedItem.lat === item.lat && selectedItem.lon === item.lon && selectedItem.name === item.name
-                    ? "border-foreground/15 bg-muted/35 shadow-subtle"
-                    : "border-border/20 bg-card/70 hover:bg-muted/25"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[9px] uppercase tracking-widest text-muted-foreground">
-                        {item.category}
-                      </span>
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">#{index + 1}</span>
+          <div className="space-y-0 mt-6">
+            {items.map((item, index) => {
+              const isSelected = selectedItem && selectedItem.lat === item.lat && selectedItem.lon === item.lon && selectedItem.name === item.name;
+              return (
+                <button
+                  key={`${item.lat}-${item.lon}-${index}`}
+                  onClick={() => onSelect(item)}
+                  onMouseEnter={() => onHighlight?.(item)}
+                  onFocus={() => onHighlight?.(item)}
+                  onMouseLeave={() => onHighlight?.(selectedItem)}
+                  className={`w-full py-5 text-left transition-colors border-b border-border/10 last:border-0 ${
+                    isSelected ? "bg-muted/20 -mx-5 px-5 w-[calc(100%+2.5rem)]" : "hover:bg-muted/10 -mx-5 px-5 w-[calc(100%+2.5rem)]"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-medium text-foreground truncate">{item.name}</h3>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[13px] text-muted-foreground/80">{item.category}</span>
+                          <span className="text-muted-foreground/40">•</span>
+                          <span className="text-[13px] text-muted-foreground/80">{item.type || "Point d'intérêt"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="text-[12px] font-mono text-muted-foreground">
+                            {item.distance < 1000 ? `${Math.round(item.distance)}m` : `${(item.distance / 1000).toFixed(1)}km`}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="mt-2 text-sm text-foreground truncate">{item.name}</p>
-                    <p className="text-[11px] text-muted-foreground/60">{item.type || "Point d'intérêt"}</p>
+                    {/* Placeholder for future photos carousel */}
+                    <div className="flex gap-2 overflow-x-auto hide-scrollbar snap-x pb-1 mt-1">
+                      <div className="snap-start shrink-0 w-24 h-24 rounded-2xl bg-muted/30 flex items-center justify-center border border-border/10">
+                        <span className="text-3xl opacity-50">{getCategoryMarkerGlyph(item.category)}</span>
+                      </div>
+                      <div className="snap-start shrink-0 w-24 h-24 rounded-2xl bg-muted/20 flex items-center justify-center border border-border/10">
+                         <HugeiconsIcon icon={Image01Icon} size={24} className="text-muted-foreground/30" />
+                      </div>
+                    </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-mono text-foreground">
-                      {item.distance < 1000 ? `${item.distance}m` : `${(item.distance / 1000).toFixed(1)}km`}
-                    </p>
-                    <p className="mt-2 text-[10px] uppercase tracking-widest text-muted-foreground">Ouvrir</p>
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1225,34 +1175,34 @@ function getDomainLabel(domain?: MacroDomain | null) {
 
 function getArchetypeLabel(archetype?: Archetype | null) {
   switch (archetype) {
-    case "ALPINE":
-      return "Alpin";
-    case "FOREST":
-      return "Forestier";
-    case "DESERT":
-      return "Désertique";
-    case "JUNGLE":
-      return "Jungle";
-    case "SAVANNAH":
-      return "Savane";
-    case "COASTAL":
-      return "Côtier";
-    case "OPEN_OCEAN":
-      return "Haute mer";
-    case "HISTORIC_CORE":
-      return "Cœur historique";
-    case "MUSEUM_DISTRICT":
-      return "Pôle muséal";
-    case "CIVIC_CENTER":
-      return "Centre civique";
-    case "AIRPORT_HUB":
-      return "Hub aéroportuaire";
-    case "STATION_DISTRICT":
-      return "Quartier gare";
-    case "REMOTE_FRONTIER":
-      return "Frontière isolée";
-    default:
-      return null;
+    case "ALPINE": return "Alpin";
+    case "FOREST": return "Forestier";
+    case "DESERT": return "Désertique";
+    case "JUNGLE": return "Jungle";
+    case "SAVANNAH": return "Savane";
+    case "COASTAL": return "Côtier";
+    case "OPEN_OCEAN": return "Haute mer";
+    case "HISTORIC_CORE": return "Cœur historique";
+    case "MUSEUM_DISTRICT": return "Pôle muséal";
+    case "CIVIC_CENTER": return "Centre civique";
+    case "AIRPORT_HUB": return "Hub aéroportuaire";
+    case "STATION_DISTRICT": return "Quartier gare";
+    case "REMOTE_FRONTIER": return "Frontière isolée";
+    default: return null;
+  }
+}
+
+function getCategoryMarkerGlyph(category: string) {
+  switch (category) {
+    case "Parc": return "🌲";
+    case "Musée": return "🏛️";
+    case "Restaurant": return "☕";
+    case "Hôtel": return "🛏️";
+    case "Transport": return "🚇";
+    case "Hôpital":
+    case "Pharmacie": return "🆘";
+    case "Vélos": return "🚲";
+    default: return "📍";
   }
 }
 

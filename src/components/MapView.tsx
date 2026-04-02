@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { Earthquake, GBIFSpecies, NearbyPOI, WikimediaPhoto } from "@/lib/enrichment";
 import type { SituationTrait } from "@/lib/priorities";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Layers01Icon, BookOpen01Icon, Alert02Icon, Leaf01Icon, Navigation03Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { Layers01Icon, BookOpen01Icon, Alert02Icon, Leaf01Icon, Navigation03Icon, ViewIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 
 export interface MapPreviewItem {
   id: string;
@@ -491,29 +491,36 @@ export default function MapView({
               if (poi) onCategoryResultClick?.(poi);
             }
           }}
-          className="absolute left-4 bottom-6 z-20 w-[min(320px,calc(100%-2rem))] rounded-[1.4rem] border border-white/40 bg-card/92 shadow-lifted backdrop-blur-md overflow-hidden text-left"
+          className="absolute left-4 bottom-6 z-20 w-[min(340px,calc(100%-2rem))] rounded-3xl border border-white/60 bg-card/90 shadow-lifted backdrop-blur-xl overflow-hidden text-left group transition-all"
         >
-          <div className="flex items-stretch">
-            <div className="w-24 shrink-0 bg-muted/30">
+          <div className="flex items-stretch p-2 relative">
+            <div className="w-[100px] h-[100px] shrink-0 rounded-2xl overflow-hidden bg-muted/30">
               {previewItem.imageUrl ? (
                 <img src={previewItem.imageUrl} alt={previewItem.title} className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full items-center justify-center text-2xl">
+                <div className="flex h-full items-center justify-center text-3xl">
                   {previewItem.kind === "landmark" ? "🖼️" : "📍"}
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1 px-3 py-3">
-              <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
-                {previewItem.kind === "landmark" ? "Landmark" : "Sélection"}
-              </p>
-              <p className="mt-1 truncate font-serif text-base text-foreground">{previewItem.title}</p>
+            <div className="min-w-0 flex-1 px-4 py-3 flex flex-col justify-center">
+              <p className="truncate font-serif text-xl text-foreground leading-tight">{previewItem.title}</p>
               {previewItem.subtitle && (
-                <p className="mt-1 text-xs text-muted-foreground">{previewItem.subtitle}</p>
+                <p className="mt-1 text-[13px] text-muted-foreground/90">{previewItem.subtitle}</p>
               )}
-              <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/60">
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-foreground flex items-center gap-1 group-hover:gap-1.5 transition-all">
                 {previewItem.kind === "category" ? "Ouvrir le détail" : "Repère visuel"}
+                <span className="text-lg leading-none mb-0.5">›</span>
               </p>
+            </div>
+            <div 
+              className="absolute top-4 right-4 w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm border border-border/20 flex items-center justify-center hover:bg-background transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewSelect?.(null);
+              }}
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-foreground" />
             </div>
           </div>
         </button>
@@ -527,23 +534,23 @@ export default function MapView({
               <HugeiconsIcon icon={Layers01Icon} size={19} className="text-foreground" />
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-4 bg-card/95 blur-calque border-border/30 shadow-lifted rounded-3xl mr-4" align="end">
-            <div className="space-y-5">
+          <PopoverContent className="w-72 p-5 bg-card/95 blur-calque border-border/30 shadow-lifted rounded-3xl mr-4" align="end">
+            <div className="space-y-6">
               <div>
-                <h3 className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/60 mb-3 px-1">Type de carte</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground mb-4">Type de carte</h3>
+                <div className="grid grid-cols-3 gap-3">
                   {(Object.entries(MAP_STYLES) as [StyleKey, any][]).map(([key, style]) => (
                     <button
                       key={key}
                       onClick={() => setCurrentStyle(key)}
-                      className={`flex flex-col items-center gap-1.5 p-1 rounded-2xl transition-all ${
-                        currentStyle === key ? "bg-muted/60 ring-1 ring-border" : "hover:bg-muted/30"
-                      }`}
+                      className="flex flex-col items-center gap-2 transition-all group"
                     >
-                      <div className="w-full aspect-square rounded-xl overflow-hidden border border-border/20 shadow-subtle">
+                      <div className={`w-full aspect-square rounded-[1rem] overflow-hidden border-2 transition-all ${
+                        currentStyle === key ? "border-primary shadow-soft" : "border-transparent shadow-subtle group-hover:border-border"
+                      }`}>
                         <img src={style.thumbnail} alt={style.name} className="w-full h-full object-cover" />
                       </div>
-                      <span className={`text-[9px] font-medium ${currentStyle === key ? "text-foreground" : "text-muted-foreground/60"}`}>
+                      <span className={`text-[10px] font-medium ${currentStyle === key ? "text-primary font-semibold" : "text-muted-foreground/70 group-hover:text-foreground"}`}>
                         {style.name}
                       </span>
                     </button>
@@ -552,7 +559,7 @@ export default function MapView({
               </div>
 
               <div>
-                <h3 className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/60 mb-3 px-1">Détails</h3>
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground mb-4">Détails de la carte</h3>
                 <div className="grid grid-cols-4 gap-2">
                   <LayerOption icon={ViewIcon} label="3D" active={show3D} onClick={() => setShow3D(!show3D)} />
                   <LayerOption
@@ -631,14 +638,14 @@ function LayerOption({ icon, label, active, onClick }: { icon: any; label: strin
       onClick={onClick}
       className="flex flex-col items-center gap-1.5 transition-all group"
     >
-      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition-all ${
+      <div className={`w-12 h-12 rounded-[1rem] flex items-center justify-center border-2 transition-all ${
         active 
-          ? "bg-primary border-primary text-primary-foreground shadow-soft" 
-          : "bg-muted/40 border-border/20 text-muted-foreground group-hover:bg-muted/60"
+          ? "bg-primary/5 border-primary text-primary shadow-soft" 
+          : "bg-muted/40 border-transparent text-muted-foreground group-hover:bg-muted/60 group-hover:border-border/30"
       }`}>
-        <HugeiconsIcon icon={icon} size={17} />
+        <HugeiconsIcon icon={icon} size={20} />
       </div>
-      <span className={`text-[8px] font-medium truncate w-full text-center ${active ? "text-foreground font-semibold" : "text-muted-foreground/60"}`}>
+      <span className={`text-[9px] font-medium truncate w-full text-center ${active ? "text-primary font-semibold" : "text-muted-foreground/70 group-hover:text-foreground"}`}>
         {label}
       </span>
     </button>
